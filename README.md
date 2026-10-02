@@ -23,7 +23,9 @@ change to wording or to the front end, run step 03 alone.
 
 Serve over HTTP to preview: the site fetches its data, which `file://` blocks.
 `outputs/03_site/` is the deployable site: plain files, every library
-vendored, no third-party requests. Serve `index.html` with
+vendored, no third-party requests. It is published at
+https://ippra.net/s3ok_dash by copying that directory to the server. Its URLs
+are relative, so it runs under any path. Serve `index.html` with
 `Cache-Control: no-cache`; everything else carries a `?v=<build>` stamp.
 
 R packages: `tidyverse`, `srvyr`, `sf`, `rmapshaper`, `jsonlite`, `here`.

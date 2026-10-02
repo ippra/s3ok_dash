@@ -24,12 +24,11 @@ source(here::here("helpers", "wording.R"))
 # Writes outputs/03_site/: plain static files with every library vendored and
 # no third-party requests. Upload the directory to any web host.
 
-# Where the site is published, for the citation on the About page. Still the
-# Shiny address the survey's papers cite; change it here when the static site
-# has a home of its own.
-site_url <- "https://crcm.shinyapps.io/s3ok"
+# Where the site is published, for the citation on the About page.
+site_url <- "https://ippra.net/s3ok_dash"
 
 dataverse_url <- "https://dataverse.harvard.edu/dataverse/msisnet"
+repo_url <- "https://github.com/ippra/s3ok_dash"
 
 needed <- paste0(dashboard_data, c("questions.json", "splits.json",
                                    "respondents.json", "regions.geojson",
@@ -742,9 +741,12 @@ about_html <- paste0(
   "<p>Survey data, questionnaires, and codebooks for each wave are available ",
   "through the ", dataverse_link, " on Harvard Dataverse. Every result on ",
   "this site is computed from those public files.</p>",
-  "<p>Each chart on Explore Survey Questions also offers Download R code, a ",
-  "script that rebuilds that chart from the public survey data and nothing ",
-  "else.</p>",
+  "<p>The code that builds this site, including the statistics it shows ",
+  "and the question wording checked against each survey instrument, is ",
+  "available in the <a href=\"", repo_url, "\">S\u00b3OK dashboard GitHub ",
+  "repository</a>. Each chart on Explore Survey Questions also offers ",
+  "Download R code, a script that rebuilds that chart from the public ",
+  "survey data and nothing else.</p>",
 
   "<hr>",
   "<h3>Publications using the survey</h3>",

@@ -1,0 +1,71 @@
+# Builds the S3OK dashboard from the committed data and publishes it to GitHub
+# Pages as the beta. Only step 03 runs here: it reads
+# outputs/02_dashboard_data/, which is committed for exactly this, and needs
+# no survey files. The statistics (step 02) are run locally and their output
+# committed; this never recomputes them.
+#
+# The production site at ippra.net/s3ok_dash is not deployed from here. It is
+# built without the channel variable and copied to our own server; see
+# README.md, "Deploying".
+name: Deploy beta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "03_build_dashboard.R"
+      - "00_paths.R"
+      - "helpers/**"
+      - "01_variable_reference/**"
+      - "outputs/02_dashboard_data/**"
+      - "site/**"
+      - ".github/workflows/deploy-beta.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push supersedes one still building.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      # Binary packages from Posit's package manager, cached between runs.
+      # Assembly needs no spatial libraries: 02 simplifies the geometry.
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::tidyverse
+            any::jsonlite
+            any::here
+
+      - name: Build the site
+        env:
+          S3OK_CHANNEL: beta
+        run: Rscript 03_build_dashboard.R
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: outputs/03_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

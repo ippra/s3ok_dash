@@ -23,12 +23,39 @@ change to wording or to the front end, run step 03 alone.
 
 Serve over HTTP to preview: the site fetches its data, which `file://` blocks.
 `outputs/03_site/` is the deployable site: plain files, every library
-vendored, no third-party requests. It is published at
-https://ippra.net/s3ok_dash by copying that directory to the server. Its URLs
-are relative, so it runs under any path. Serve `index.html` with
-`Cache-Control: no-cache`; everything else carries a `?v=<build>` stamp.
+vendored, no third-party requests.
 
-R packages: `tidyverse`, `srvyr`, `sf`, `rmapshaper`, `jsonlite`, `here`.
+R packages: `tidyverse`, `jsonlite` and `here` for step 03; `srvyr`, `sf` and
+`rmapshaper` as well for step 02.
+
+## Deploying
+
+Two deployments of one build.
+
+**Beta: GitHub Pages, automatic.** `.github/workflows/deploy-beta.yml` runs
+step 03 on every push to `main` that touches the site, the builder, the
+reference tables or the computed data, and publishes the result to
+https://ippra.github.io/s3ok_dash/. It sets `S3OK_CHANNEL=beta`, which puts a
+Beta label beside the masthead title, adds a `noindex` tag and writes a
+`robots.txt` that disallows everything, so the beta is never found in place
+of production. The repository's Pages source must be set to GitHub Actions
+(Settings, Pages).
+
+The Action runs step 03 only. `outputs/02_dashboard_data/` is committed for
+exactly this: step 02 takes twenty-five minutes and needs the location file
+the repository does not carry, so it is run locally and reaches the beta when
+its output is committed and pushed.
+
+**Production: ippra.net, by hand.** Build without the channel variable and
+copy the site to the server:
+
+```
+Rscript 03_build_dashboard.R
+rsync -av --delete outputs/03_site/ <ippra.net host>:<docroot>/s3ok_dash/
+```
+
+Its URLs are relative, so it runs under any path. Serve `index.html` with
+`Cache-Control: no-cache`; everything else carries a `?v=<build>` stamp.
 
 ## Layout
 
@@ -45,7 +72,8 @@ helpers/                      sourced by the steps, never run on their own
   rcode.R                     generator for the R script behind each chart, and its check
   wording.R                   turns wording placeholders into words
 site/                         the hand-edited front end
-outputs/                      everything built; safe to delete
+outputs/02_dashboard_data/    step 02's output, committed so a clone can build
+outputs/03_site/              the built site; not committed
 preview.py                    local preview server
 ```
 

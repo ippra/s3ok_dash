@@ -1039,11 +1039,27 @@ regions_sf <- counties_sf |>
   group_by(REGION) |>
   summarize(geometry = st_union(geometry), .groups = "drop")
 
-unlink(paste0(dashboard_data, c("regions.geojson", "counties.geojson")))
-st_write(regions_sf, paste0(dashboard_data, "regions.geojson"),
-         driver = "GeoJSON", quiet = TRUE)
-st_write(counties_sf, paste0(dashboard_data, "counties.geojson"),
-         driver = "GeoJSON", quiet = TRUE)
+# The copies the map draws are simplified: county boundaries at full
+# resolution are 400 KB, more than a map a few hundred pixels tall can show.
+# The regions drawn are dissolved from the simplified counties rather than
+# simplified on their own, so a region's border and the county lines along it
+# stay the same line. Done here rather than in 03, so assembling the site
+# needs neither sf nor rmapshaper.
+map_counties_sf <- counties_sf |>
+  rmapshaper::ms_simplify(keep = 0.08, keep_shapes = TRUE)
+
+map_regions_sf <- map_counties_sf |>
+  group_by(REGION) |>
+  summarize(geometry = st_union(geometry), .groups = "drop")
+
+write_geojson <- function(x, file) {
+  path <- paste0(dashboard_data, file)
+  if (file.exists(path)) unlink(path)
+  st_write(x, path, driver = "GeoJSON", quiet = TRUE,
+           layer_options = "COORDINATE_PRECISION=4")
+}
+write_geojson(map_regions_sf, "regions.geojson")
+write_geojson(map_counties_sf |> select(COUNTY), "counties.geojson")
 
 # Respondent Locations ---------------------------------------------------------
 # One dot per panelist, from the shared location file, whose coordinates were

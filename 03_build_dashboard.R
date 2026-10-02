@@ -1,5 +1,4 @@
 library(tidyverse)
-library(sf)
 library(jsonlite)
 
 source(here::here("00_paths.R"))
@@ -26,6 +25,16 @@ source(here::here("helpers", "wording.R"))
 
 # Where the site is published, for the citation on the About page.
 site_url <- "https://ippra.net/s3ok_dash"
+
+# Which deployment this build is for. The beta on GitHub Pages is built with
+# S3OK_CHANNEL=beta, which labels the masthead and asks search engines not to
+# index it, so the beta never competes with the production site in search.
+# Unset, the build is production: the same site with neither.
+channel <- Sys.getenv("S3OK_CHANNEL", "production")
+
+if (!channel %in% c("production", "beta")) {
+  stop("S3OK_CHANNEL is `", channel, "`; use `beta` or leave it unset.")
+}
 
 dataverse_url <- "https://dataverse.harvard.edu/dataverse/msisnet"
 repo_url <- "https://github.com/ippra/s3ok_dash"
@@ -359,29 +368,21 @@ invisible(file.copy(paste0(dashboard_data, "locations.json"),
 locations <- read_json(paste0(dashboard_data, "locations.json"))
 
 # Geometry ---------------------------------------------------------------------
-# County boundaries at full resolution are 400 KB, more than a map a few
-# hundred pixels tall can show. Regions are dissolved from the simplified
-# counties rather than simplified on their own, so a region's border and the
-# county lines along it stay the same line.
-counties_sf <- read_sf(paste0(dashboard_data, "counties.geojson")) |>
-  rmapshaper::ms_simplify(keep = 0.08, keep_shapes = TRUE)
+# The region and county outlines, already simplified by 02, carried over as
+# they are.
+drawn_regions <- paste0(dashboard_data, "regions.geojson") |>
+  read_json() |>
+  pluck("features") |>
+  map_chr(function(f) f$properties$REGION)
 
-regions_sf <- counties_sf |>
-  group_by(REGION) |>
-  summarize(geometry = st_union(geometry), .groups = "drop")
-
-if (!setequal(regions_sf$REGION, region_levels)) {
+if (!setequal(drawn_regions, region_levels)) {
   stop("The region geometry and the respondent counts name different regions.")
 }
 
-write_geojson <- function(x, path) {
-  if (file.exists(path)) unlink(path)
-  st_write(x, path, driver = "GeoJSON", quiet = TRUE,
-           layer_options = "COORDINATE_PRECISION=4")
-}
-write_geojson(regions_sf, paste0(site_out, "data/geo/regions.geojson"))
-write_geojson(counties_sf |> select(COUNTY),
-              paste0(site_out, "data/geo/counties.geojson"))
+invisible(file.copy(
+  paste0(dashboard_data, c("regions.geojson", "counties.geojson")),
+  paste0(site_out, "data/geo/")
+))
 
 # Narratives -------------------------------------------------------------------
 narrative_files <- list.files(paste0(dashboard_data, "narratives"),
@@ -798,7 +799,8 @@ config <- list(
     slug = "s3ok",
     title = "S³OK — Oklahoma Public Survey Dashboard",
     nav_title = "S³OK",
-    nav_subtitle = "Socially Sustainable Solutions for Oklahoma"
+    nav_subtitle = "Socially Sustainable Solutions for Oklahoma",
+    beta = channel == "beta"
   ),
   theme = list(default = "s3ok", allow_viewer_switch = TRUE),
   groupings = groupings_cfg,
@@ -1127,6 +1129,16 @@ invisible(file.copy(list.files(site_src, full.names = TRUE), site_out,
                     recursive = TRUE, overwrite = TRUE))
 index_html <- gsub("__BUILD__", build,
                    readLines(file.path(site_src, "index.html")))
+
+if (channel == "beta") {
+  viewport <- grep("name=\"viewport\"", index_html, fixed = TRUE)
+  if (length(viewport) != 1) stop("index.html has no single viewport line.")
+  index_html <- append(index_html,
+                       "<meta name=\"robots\" content=\"noindex, nofollow\">",
+                       after = viewport)
+  writeLines(c("User-agent: *", "Disallow: /"), paste0(site_out, "robots.txt"))
+}
+
 writeLines(index_html, paste0(site_out, "index.html"))
 
 # list.files() skips dotfiles at the top of site/, but the copy above descends

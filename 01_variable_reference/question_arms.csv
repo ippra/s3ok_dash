@@ -1,0 +1,10 @@
+variable,arm_variable
+out_short,rand_temp
+out_med,rand_temp
+out_long,rand_temp
+wind_vis_sup,rand_loc_vis
+solar_vis_sup,rand_loc_vis
+pumpjack_vis_sup,rand_loc_vis
+stortank_vis_sup,rand_loc_vis
+elecline_vis_sup,rand_loc_vis
+substation_vis_sup,rand_loc_vis

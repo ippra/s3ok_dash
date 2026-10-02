@@ -1,0 +1,105 @@
+# S3OK dashboard
+
+The S³OK Public Survey dashboard: a static site built from the public wave
+files, in the look and structure of WxDash (`ippra/wxdash`), whose front end
+it shares.
+
+## Workflow
+
+| step | what it is | output |
+|---|---|---|
+| `00_paths.R` | every path and the table of waves; sourced by each script | |
+| `01_variable_reference/` | hand-maintained tables: question wording and topics, split-sample declarations, counties and regions | |
+| `02_create_dashboard_data.R` | computes every statistic the site shows | `outputs/02_dashboard_data/` |
+| `03_build_dashboard.R` | writes the page prose and assembles the site; computes no statistics | `outputs/03_site/` |
+
+```
+Rscript 00_run_pipeline.R      # steps 02 and 03, in order
+python3 preview.py             # then open http://127.0.0.1:8902/
+```
+
+Step 02 takes ten to twenty-five minutes; step 03 takes seconds. After a
+change to wording or to the front end, run step 03 alone.
+
+Serve over HTTP to preview: the site fetches its data, which `file://` blocks.
+`outputs/03_site/` is the deployable site: plain files, every library
+vendored, no third-party requests. Serve `index.html` with
+`Cache-Control: no-cache`; everything else carries a `?v=<build>` stamp.
+
+R packages: `tidyverse`, `srvyr`, `sf`, `rmapshaper`, `jsonlite`, `here`.
+
+## Layout
+
+```
+00_paths.R                    paths and waves
+00_run_pipeline.R             runs 02 then 03
+01_variable_reference/        inputs maintained by hand
+02_create_dashboard_data.R    step 02
+03_build_dashboard.R          step 03
+data/                         the public wave files; the shared location
+                              file also goes here but is not in the repository
+helpers/                      sourced by the steps, never run on their own
+  splits.R                    the 13 comparison groups, each as the R that derives it
+  rcode.R                     generator for the R script behind each chart, and its check
+  wording.R                   turns wording placeholders into words
+site/                         the hand-edited front end
+outputs/                      everything built; safe to delete
+preview.py                    local preview server
+```
+
+Adding a wave: its file in `data/`, a row in `waves` (`00_paths.R`), its
+questions in `variable_reference.csv`, and a level in the `WAVE` split
+(`helpers/splits.R`).
+
+## Pages
+
+| page | what it shows |
+|---|---|
+| Home | what the project is, an animated map of the panel, four counted figures |
+| Explore Survey Questions | search, one question at a time under 14 splits, question browser, R code for each chart; for a question asked in several waves, a line per respondent across them |
+| Explore Key Topics | a whole battery on one chart: priorities, risk, experience, future risk, trust |
+| Explore Regions | the same measures for the five regions, approximate respondent locations, a region overview sheet |
+| Policy Narratives | Wave 1's open-ended answers, searchable |
+| About | the survey, how to read results, publications, support |
+
+## Decisions worth knowing
+
+- **Public files only.** Step 02 stops if a wave file carries contact or
+  location columns.
+- **Unweighted.** The public files carry no weights, and every caption says
+  so.
+- **A panel.** Pooled charts count a person once per wave. Captions give
+  responses and people, and intervals come from a design clustered on the
+  panelist (`ids = p_id`).
+- **Gender.** Respondents whose gender is neither female nor male are too few
+  to chart as a group; they are left out of the Gender split only.
+- **Top priority is per response:** the item ranked first in that wave.
+- **Each respondent across waves** is drawn on a balanced sample: only
+  respondents who answered the question in every wave that asked it. The
+  site is sent distinct answer sequences with counts, never a row per
+  person. Where a question's options are ordered (`scale_order` in the
+  variable reference), each group's average answer per wave is drawn over
+  the lines.
+- **Small groups.** A group with fewer than 20 responses on a question is not
+  charted, and the caption names it.
+- **Split-sample questions** (`rand_temp`, `rand_loc_vis`) are estimated one
+  version at a time, declared in `question_arms.csv` and `arms.csv`.
+- **Field dates, not wave names.** The files name Wave 1 "Summer 2021", and
+  it ran in February and March. The site shows dates read from the data.
+- **Respondent locations** come from the shared location file, already
+  displaced by up to 0.01 degrees, one dot per panelist, with no attributes.
+- **The generated R is run.** For every question, step 02 runs two of its
+  generated scripts (Everyone and one rotating split) against the wave files
+  and stops if either does not reproduce its chart.
+
+## Sources
+
+| input | source |
+|---|---|
+| `data/Public_Wave_*_Survey_Data.csv` | https://dataverse.harvard.edu/dataverse/msisnet |
+| `data/S3OK_MSISNet_Wave_1_8_Shared_Location_Data.csv` | exported by the project from the unreleased files, with coordinates displaced for sharing. **Not in the repository** (it is keyed by `p_id`); step 02 needs it and stops without it, so ask the project for a copy |
+| `01_variable_reference/variable_reference.csv` | the project's question sheet, checked against the eight survey instruments (stems, wording, response labels), with topics assigned; `notes` records routing and where the sheet departs from an instrument |
+| `01_variable_reference/ok_counties_2023.geojson` | Census cartographic boundary file, 2023, via `tigris::counties(state = "OK", cb = TRUE, year = 2023)` |
+| `01_variable_reference/ok_counties_by_regions.csv` | the project's county-to-region table |
+| `site/assets/vendor/` | Leaflet, Chart.js with its datalabels plugin, and jsPDF, as vendored in WxDash |
+| `site/assets/img/` | the NSF and Oklahoma EPSCoR logos |

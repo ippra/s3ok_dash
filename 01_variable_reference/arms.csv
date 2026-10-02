@@ -1,0 +1,5 @@
+arm_variable,prompt,value,label,arm_order,wording
+rand_temp,Outdoor temperature in the scenario,15,15 degrees,1,15
+rand_temp,Outdoor temperature in the scenario,95,95 degrees,2,95
+rand_loc_vis,Place named in the question,Oklahoma,Oklahoma,1,Oklahoma
+rand_loc_vis,Place named in the question,your local area,Your local area,2,your local area

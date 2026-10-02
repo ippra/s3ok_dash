@@ -1,0 +1,1536 @@
+/* engine.css — S3OK dashboard styles.
+   Design tokens up top; the s3ok (light, default), dark and greyscale
+   (high-contrast accessibility) themes override them on html[data-theme].
+   Shared with the institute's other dashboards (forked from WxDash's
+   09_dashboard/site), so class names keep their wx- prefix; what this
+   dashboard adds is at the foot of the file under s3-. */
+
+:root {
+  --bg: #faf9f7;                /* warm paper */
+  --panel: #ffffff;
+  --panel-border: #e7e3dc;
+  --text: #26221e;
+  --text-muted: #6b645c;
+  --accent: #8a1538;            /* fallback only; the s3ok theme overrides */
+  --accent-contrast: #ffffff;
+  --nav-bg: #ffffff;
+  --nav-text: #26221e;
+  --control-bg: #ffffff;
+  --control-border: #cfc9c0;
+  --row-hover: #f5f2ec;
+  --row-selected: #fdeef2;
+  --map-hairline: rgba(38, 34, 30, 0.28);
+  --shadow: 0 1px 3px rgba(40, 30, 20, 0.08);
+  --radius: 10px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: Charter, "Bitstream Charter", Cambria, Georgia, serif;
+}
+
+/* Greyscale — high-contrast accessibility (B&W print, color-vision needs).
+   Restyles chrome; the engine's dataStops() repaints map ramps in greys. */
+html[data-theme="greyscale"] {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-border: #444444;
+  --text: #000000;
+  --text-muted: #333333;
+  --accent: #000000;
+  --accent-contrast: #ffffff;
+  --nav-bg: #ffffff;
+  --nav-text: #000000;
+  --control-bg: #ffffff;
+  --control-border: #444444;
+  --row-hover: #eeeeee;
+  --row-selected: #dddddd;
+  --map-hairline: rgba(0, 0, 0, 0.55);
+  --shadow: none;
+  --font-display: var(--font);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  /* Column flex so the footer hugs the viewport bottom on short pages. */
+  display: flex; flex-direction: column; min-height: 100vh;
+}
+
+/* ---------- IPPRA institutional bar ---------- */
+/* Shared chrome above the dashboard's own header; index.html explains its two
+   modes. Black and white in every theme, because institutional chrome should
+   read the same on all of them. No crimson rule beneath it: black, crimson,
+   then the dark purple masthead is three competing darks in 30 pixels.
+
+   Not sticky. #navbar is sticky at top: 0 and the data tables sticky their
+   own headers, so a second sticky layer would mean retuning those offsets for
+   a 26px strip; it scrolls away instead. */
+#ippra-bar {
+  background: #000;
+  color: #fff;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 0 20px;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+}
+#ippra-bar a { color: #fff; text-decoration: none; padding: 5px 0; }
+#ippra-bar a:hover { text-decoration: underline; }
+#ippra-bar a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* One mode at a time. The default is the institutional link, so a visitor
+   still gets it if the script is blocked or throws. */
+.ippra-bar-back { display: none; }
+html[data-entry="referred"] .ippra-bar-home { display: none; }
+html[data-entry="referred"] .ippra-bar-back { display: inline; }
+
+/* ---------- navbar ---------- */
+#navbar {
+  display: flex; align-items: center; gap: 24px;
+  background: var(--nav-bg); color: var(--nav-text);
+  border-bottom: 1px solid var(--panel-border);
+  padding: 0 20px; height: 54px;
+  position: sticky; top: 0; z-index: 1100;
+  box-shadow: var(--shadow);
+}
+#nav-title { font-weight: 700; font-size: 17px; letter-spacing: 0.02em; font-family: var(--font-display); }
+.brand-beta {
+  display: inline-block; margin-left: 8px; padding: 1px 6px; vertical-align: 2px;
+  border: 1px solid currentColor; border-radius: 4px;
+  font-family: var(--mono, monospace); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85;
+  line-height: 1.3;
+}
+/* The badge's border makes the title line taller, so the subtitle under it
+   gets a little more room to clear it. */
+.brand-name:has(.brand-beta) ~ .brand-sub { margin-top: 4px; }
+#nav-pages { display: flex; gap: 4px; flex-wrap: wrap; }
+#nav-pages a, #nav-pages .nav-group-btn {
+  color: var(--text-muted); text-decoration: none;
+  padding: 6px 12px; border-radius: 999px; font-size: 14px;
+  background: none; border: 0; cursor: pointer; font-family: inherit;
+}
+#nav-pages a:hover, #nav-pages .nav-group-btn:hover { background: var(--row-hover); color: var(--text); }
+#nav-pages a.active, #nav-pages .nav-group-btn.active { background: var(--accent); color: var(--accent-contrast); }
+
+/* ---------- layout ---------- */
+#app { padding: 18px; max-width: 1500px; margin: 0 auto; width: 100%; flex: 1 0 auto; }
+.page { display: flex; gap: 18px; align-items: flex-start; }
+.content { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+
+.card {
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 18px;
+}
+.card h3 { margin: 0 0 6px; font-size: 16px; font-family: var(--font-display); }
+.card .subtitle { color: var(--text-muted); font-size: 14px; margin: 0 0 12px; }
+
+label.field-label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13.5px; }
+select.grouping {
+  width: 100%; padding: 8px 10px; font-size: 14px;
+  background: var(--control-bg); color: var(--text);
+  border: 1px solid var(--control-border); border-radius: 6px;
+}
+
+/* ---------- charts ---------- */
+.chart-wrap { position: relative; height: 520px; }
+.chart-wrap canvas { max-width: 100%; }
+
+/* ---------- tabs ---------- */
+
+/* ---------- tables ---------- */
+
+table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.data th, table.data td {
+  text-align: left; padding: 8px 10px; vertical-align: top;
+  border-bottom: 1px solid var(--panel-border);
+}
+table.data th { position: sticky; top: 0; background: var(--panel); z-index: 5; }
+
+table.data th input {
+  width: 100%; margin-top: 6px; padding: 4px 6px; font-size: 12.5px;
+  border: 1px solid var(--control-border); border-radius: 4px;
+  background: var(--control-bg); color: var(--text);
+}
+table.data tbody tr:hover { background: var(--row-hover); }
+
+table.data tbody tr.selected { background: var(--row-selected); }
+
+/* ---------- map ---------- */
+
+.leaflet-container { font: inherit; }
+
+/* ---------- viewer theme switcher ---------- */
+#theme-switch { margin-left: auto; position: relative; }
+#theme-btn {
+  border: 1px solid var(--control-border); background: var(--control-bg); color: var(--text);
+  border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
+#theme-btn:hover { background: var(--row-hover); }
+#theme-menu {
+  display: none; position: absolute; right: 0; top: 40px; min-width: 210px;
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0,0,0,0.14);
+  padding: 6px; z-index: 1200;
+}
+#theme-menu.open { display: block; }
+#theme-menu button {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  border: none; background: none; color: var(--text); font: inherit; font-size: 13.5px;
+  padding: 8px 10px; border-radius: 6px; cursor: pointer; text-align: left;
+}
+#theme-menu button:hover { background: var(--row-hover); }
+#theme-menu button.active { background: var(--row-selected); font-weight: 600; }
+#theme-menu .swatch {
+  width: 16px; height: 16px; border-radius: 4px; flex: 0 0 auto;
+  border: 1px solid rgba(0,0,0,0.2);
+}
+
+.loading { color: var(--text-muted); padding: 40px; text-align: center; }
+.error { color: #b00020; padding: 24px; }
+
+@media (max-width: 900px) {
+  .page { flex-direction: column; }
+}
+
+/* ================= Themes and components ================================ */
+
+/* S3OK theme (light default), the look the institute's dashboards share:
+   viridis #443A83 purple as brand anchor, cool-violet paper, midnight display
+   ink, monospace for small labels and values, and a viridis spectrum strip
+   under the navbar tying chrome to the data palette. */
+html[data-theme="s3ok"] {
+  --bg: #f7f6fb;
+  --panel: #ffffff;
+  --panel-border: #e2e1ec;
+  --text: #232130;
+  --text-muted: #6a6780;
+  --accent: #443A83;
+  --accent-contrast: #ffffff;
+  --display-ink: #2e2a57;
+  --nav-bg: #2e2a57;
+  --nav-text: #f0eef8;
+  --control-bg: #ffffff;
+  --control-border: #c9c6dd;
+  --row-hover: #f1f0f7;
+  --row-selected: #e9e6f5;
+  --map-bg: #eef1f4;
+  --map-line: #b8b8c0;
+  --map-hairline: rgba(35, 33, 48, 0.28);
+  --shadow: 0 1px 3px rgba(40, 30, 90, 0.10);
+  --font-display: var(--font);
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Dark theme: deep slate chrome, luminous viridis-teal accent (sampled from
+   the data ramp itself). */
+html[data-theme="dark"] {
+  --bg: #0b1220;
+  --panel: #0f172a;
+  --panel-border: #1e293b;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #22a884;
+  --accent-contrast: #06130d;
+  --display-ink: #e2e8f0;
+  --nav-bg: #060b16;
+  --nav-text: #cbd5e1;
+  --control-bg: #1e293b;
+  --control-border: #334155;
+  --row-hover: #16223a;
+  --row-selected: #1b2c4a;
+  --map-bg: #101a2e;
+  --map-line: #2c3b57;
+  --map-hairline: rgba(226, 232, 240, 0.32);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --font-display: var(--font);
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Viridis spectrum strip under the navbar — the light and dark themes only */
+html[data-theme="s3ok"] #navbar::after,
+html[data-theme="dark"] #navbar::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #440154, #414487, #2a788e, #22a884, #7ad151, #fde725);
+}
+html[data-theme="s3ok"] #navbar,
+html[data-theme="dark"] #navbar { position: sticky; border-bottom: none; }
+
+/* ---------- maps ---------- */
+.wx-map-card { padding: 0; overflow: hidden; }
+/* Compound selector on purpose: Leaflet puts .leaflet-container on this same
+   element, and its default #ddd would show through as the grey slab this is
+   removing. */
+.wx-map, .wx-map.leaflet-container { height: 620px; background: transparent; }
+
+.leaflet-container { font-family: var(--font); }
+
+.wx-legend { padding: 10px 14px; }
+.wx-legend-title { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+.wx-legend-bar { height: 10px; border-radius: 5px; }
+.wx-legend-labels { display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* ---------- shared widgets ---------- */
+
+/* ---------- misc ---------- */
+.wx-caption { font-size: 12px; color: var(--text-muted); margin: 6px 4px 0; }
+.chart-wrap.tall { height: 560px; }
+.wx-static { line-height: 1.65; }
+/* The rule between the About page's sections. Light, because it separates
+   parts of one account rather than unrelated blocks. */
+.wx-static hr {
+  border: 0; border-top: 1px solid var(--panel-border); margin: 26px 0 22px;
+}
+/* A section heading, marked with a short accent rule rather than by size
+   alone: the About page is one column of prose and needs somewhere for the
+   eye to stop. */
+.wx-static h3 {
+  margin: 0 0 12px; font-size: 13px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--accent);
+  font-family: var(--mono, monospace);
+}
+.wx-static h3::after {
+  content: ""; display: block; width: 34px; height: 2px; margin-top: 8px;
+  background: var(--accent); opacity: .5;
+}
+.wx-static a { color: var(--accent); text-underline-offset: 3px; }
+.wx-static ul { margin: 0 0 14px; padding-left: 20px; }
+.wx-static li { margin-bottom: 6px; }
+/* The opening paragraph says what the platform is for, so it is set larger
+   than what follows rather than being one paragraph among several. */
+/* Publications: a year heading, then each entry as its title (the link)
+   over its citation, one format throughout and no cards. */
+.wx-pub-year {
+  margin: 22px 0 8px; font-family: var(--mono, monospace); font-size: 12px;
+  font-weight: 700; letter-spacing: 0.06em; color: var(--text-muted);
+}
+.wx-pub { margin: 0 0 14px; }
+.wx-pub-title { display: block; font-weight: 600; font-size: 16px; line-height: 1.4; }
+.wx-pub-cite { display: block; margin-top: 3px; font-size: 14px; line-height: 1.5; color: var(--text-muted); }
+.wx-about-contact { line-height: 1.6; }
+.wx-about-lede {
+  font-size: 16.5px; line-height: 1.6; color: var(--text); margin: 0 0 14px;
+}
+/* Each page of the site as a link rather than a bullet: a reader who has just
+   been told what a page holds should be one click from it. */
+.wx-about-links { display: grid; gap: 8px; margin: 14px 0 16px; }
+.wx-about-link {
+  display: block; text-decoration: none; color: inherit;
+  border: 1px solid var(--panel-border); border-left: 3px solid var(--accent);
+  border-radius: 6px; padding: 10px 14px; background: var(--bg);
+}
+.wx-static a.wx-about-link { color: inherit; text-decoration: none; }
+.wx-about-link:hover { border-color: var(--accent); }
+.wx-about-link-name {
+  display: block; font-weight: 650; font-size: 14.5px; color: var(--accent);
+}
+.wx-about-link-name::after { content: " \2192"; }
+.wx-about-link-body {
+  display: block; font-size: 13.5px; color: var(--text-muted); margin-top: 2px;
+}
+/* The caveat, set off from the account around it. */
+
+/* ============ Landing + typography ====================================== */
+
+/* Small labels and data values read in monospace, the typographic
+   signature the institute's dashboards share. */
+.wx-eyebrow { font-family: var(--mono, monospace); }
+
+.wx-eyebrow {
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-muted); margin: 0 0 10px;
+}
+
+/* ---------- landing hero ------------------------------------------------ */
+
+/* ---------- landing: the program before its results ---------------------
+   Hierarchy from type, whitespace and rules: the statement is the loudest
+   thing on the page, the statistics band second, and the explore cards are
+   the only cards. Everything shares the hero's 44px text edge. */
+.wx-landing-page .content { gap: 0; }
+.wx-landing-hero { padding: 60px 44px 40px; }
+/* Words left, dot field right, under a title that spans both. The field is
+   centred on the statement it sits beside. */
+.wx-landing-top {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 32px 64px; align-items: center;
+}
+.wx-landing-top > :only-child { grid-column: 1 / -1; }
+.wx-dotfield { margin: 0; }
+.wx-dotfield-title {
+  margin: 0 0 12px; font-family: var(--font-display); font-size: 15px;
+  font-weight: 650; color: var(--display-ink, var(--text));
+}
+
+/* The dot field's colors, from the viridis ramp the masthead's rule is drawn
+   in; yellow is left off, because a 2px dot of it vanishes on the light
+   page. */
+
+html[data-theme="greyscale"] {
+  --haz-1: #1a1a1a; --haz-2: #484848; --haz-3: #757575; --haz-4: #9c9c9c;
+  --haz-5: #c2c2c2;
+}
+html[data-theme="dark"] {
+  --haz-1: #8f7fd6; --haz-2: #3fa3c4; --haz-3: #2fc195; --haz-4: #7ad151;
+  --haz-5: #c2e04a;
+}
+
+.wx-dotfield-caption {
+  margin: 10px 0 0; font-size: 12px; color: var(--text-muted);
+}
+/* Columns arrive left to right, once, on load: the growth shown as growth.
+   Nothing moves for a reader who has asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  
+  @keyframes wx-dot-in { from { opacity: 0; transform: translateY(6px); } }
+}
+@media (max-width: 900px) {
+  .wx-landing-top { grid-template-columns: 1fr; }
+  .wx-dotfield { max-width: 520px; }
+}
+.wx-landing-title {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3.4vw, 42px);
+  font-weight: 800; letter-spacing: -0.02em; line-height: 1.12;
+  color: var(--display-ink, var(--text));
+  margin: 0 0 18px; text-wrap: balance;
+}
+.wx-title-line { display: block; }
+.wx-landing-intro {
+  font-size: 18px; line-height: 1.6; color: var(--text-muted);
+  max-width: 62ch; margin: 0;
+}
+/* The data gap: display type between two hairlines, no box. The first line
+   is set quieter than the second, because the second is the problem. */
+.wx-landing-statement {
+  margin: 30px 0; padding: 24px 0;
+  border-top: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+  font-family: var(--font-display);
+  font-size: clamp(22px, 2.5vw, 30px); line-height: 1.3;
+  font-weight: 700; letter-spacing: -0.01em; max-width: 36ch;
+}
+.wx-statement-line { display: block; color: var(--text-muted); }
+.wx-statement-line + .wx-statement-line {
+  color: var(--display-ink, var(--text)); margin-top: 8px;
+}
+.wx-landing-desc {
+  font-size: 16.5px; line-height: 1.68; max-width: 68ch; margin: 0;
+}
+/* Project at a glance: one tinted band with hairlines between its figures,
+   so the four read as one fact rather than four cards. */
+.wx-stats {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 44px; padding: 26px 0;
+  background: var(--panel);
+  border-top: 2px solid var(--accent);
+  border-bottom: 1px solid var(--panel-border);
+}
+.wx-stat { padding: 2px 24px; }
+.wx-stat + .wx-stat { border-left: 1px solid var(--panel-border); }
+.wx-stat-value {
+  margin: 0 0 6px; font-family: var(--font-display);
+  font-size: clamp(20px, 2.2vw, 30px); line-height: 1.1;
+  font-weight: 800; letter-spacing: -0.01em; color: var(--accent);
+}
+.wx-stat-label {
+  margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-muted);
+}
+.wx-sec { padding: 48px 44px 44px; }
+.wx-sec-lead {
+  font-family: var(--mono, monospace); font-size: 11.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-muted);
+  font-weight: 600; margin: 0 0 14px;
+}
+.wx-sec-cols {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px 64px; align-items: start;
+}
+.wx-sec-wide { grid-template-columns: minmax(0, 1fr); }
+.wx-sec-prose p { margin: 0 0 14px; font-size: 15.5px; line-height: 1.7; }
+.wx-sec-prose p:last-child { margin-bottom: 0; }
+/* Explore the Data: its own section under a rule, and the only cards. */
+.wx-explore {
+  margin: 0 44px; padding: 40px 0 12px;
+  border-top: 1px solid var(--panel-border);
+}
+.wx-explore-heading {
+  font-family: var(--font-display); font-size: 26px; font-weight: 700;
+  letter-spacing: -0.01em; margin: 0 0 10px; color: var(--display-ink, var(--text));
+}
+.wx-explore-lede {
+  font-size: 15.5px; line-height: 1.65; color: var(--text-muted);
+  max-width: 68ch; margin: 0 0 24px;
+}
+.wx-explore-cards {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;
+}
+.wx-explore-card {
+  display: flex; flex-direction: column;
+  text-decoration: none; color: var(--text);
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 8px; padding: 20px 22px 18px;
+}
+.wx-explore-card h3 { margin: 0 0 8px; font-size: 16.5px; font-weight: 650; }
+.wx-explore-card p {
+  margin: 0 0 16px; font-size: 14px; line-height: 1.55; color: var(--text-muted);
+}
+.wx-explore-cta {
+  margin-top: auto; font-size: 14px; font-weight: 600; color: var(--accent);
+}
+.wx-explore-card:hover { border-color: var(--accent); }
+.wx-explore-card:hover .wx-explore-cta {
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.wx-explore-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 900px) {
+  .wx-landing-hero { padding: 30px 18px 28px; }
+  .wx-stats { margin: 0 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 20px; }
+  .wx-stat:nth-child(odd) { border-left: none; }
+  .wx-sec { padding: 36px 18px 32px; }
+  .wx-sec-cols { grid-template-columns: 1fr; }
+  .wx-explore { margin: 0 18px; }
+  .wx-explore-cards { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .wx-stats { grid-template-columns: 1fr; }
+  .wx-stat + .wx-stat { border-left: none; }
+}
+
+/* The accent button; the quiz's navigation and its finale use it. */
+
+/* ---------- explorer layout ----------------------------------------------
+   Title and introduction, search, question heading, controls, the
+   full-width chart card with its caption, and the question browser below. */
+.wx-explore-intro { color: var(--text-muted); font-size: 14px; margin: 0 2px; }
+.wx-page-head { margin: 0 2px 4px; }
+/* The survey explorer opens as a public data resource rather than an
+   application header: more room around its title and introduction, and the
+   introduction at reading size. */
+.wx-explore-page .wx-page-head { margin: 22px 2px 6px; }
+.wx-explore-page .wx-page-title { font-size: 30px; margin-bottom: 12px; }
+.wx-explore-page .wx-page-head .wx-explore-intro {
+  font-size: 16.5px; line-height: 1.65; max-width: 74ch;
+}
+/* The search: the page's primary way in, so it is large and set on its own,
+   and a rule below it hands over to the question on screen. */
+.wx-qsearch {
+  margin: 10px 2px 8px; padding: 0 0 30px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.wx-qsearch-label {
+  display: block; margin: 0 0 10px;
+  font-family: var(--mono, monospace); font-size: 11.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-muted); font-weight: 600;
+}
+.wx-qsearch-field { position: relative; max-width: 820px; }
+.wx-qsearch-input {
+  width: 100%; box-sizing: border-box;
+  padding: 15px 18px; font-size: 18px; font-family: inherit;
+  color: var(--text); background: var(--control-bg);
+  border: 1px solid var(--control-border); border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.wx-qsearch-input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.wx-qsearch-hint { margin: 8px 2px 0; font-size: 13px; color: var(--text-muted); }
+.wx-qsearch-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 1200;
+  margin: 0; padding: 6px 0; list-style: none;
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, .12);
+  max-height: min(60vh, 520px); overflow-y: auto;
+}
+.wx-qsearch-list[hidden] { display: none; }
+.wx-qsearch-opt {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 10px 18px; cursor: pointer;
+}
+.wx-qsearch-opt + .wx-qsearch-opt { border-top: 1px solid var(--panel-border); }
+.wx-qsearch-opt.active { background: var(--row-hover); }
+.wx-qsearch-stem {
+  font-size: 12.5px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wx-qsearch-item { font-size: 15px; font-weight: 600; color: var(--text); }
+.wx-qsearch-survey {
+  font-family: var(--mono, monospace); font-size: 11px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--accent);
+}
+.wx-qsearch-none, .wx-qsearch-more {
+  padding: 10px 18px; font-size: 13px; color: var(--text-muted);
+}
+.wx-qsearch-more { border-top: 1px solid var(--panel-border); }
+@media (max-width: 700px) {
+  .wx-explore-page .wx-page-title { font-size: 24px; }
+  .wx-qsearch-input { font-size: 16px; padding: 13px 14px; }
+}
+.wx-page-head:empty { display: none; }
+.wx-page-head .wx-explore-intro { margin: 0; }
+.wx-page-head .wx-explore-intro + .wx-explore-intro { margin-top: 12px; }
+/* Sized against the card headlines rather than the hero: this sits inside the
+   page, above a paragraph, not on a title screen. */
+.wx-page-title {
+  margin: 0 0 6px; font-size: 26px; line-height: 1.25; font-weight: 650;
+  letter-spacing: -0.01em; color: var(--text); font-family: var(--font-display);
+}
+@media (max-width: 700px) { .wx-page-title { font-size: 21px; } }
+
+.wx-ci-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 14px; padding-bottom: 9px; cursor: pointer;
+}
+.wx-ci-label input { accent-color: var(--accent); width: 15px; height: 15px; }
+.wx-ci-label:has(input:disabled) { opacity: 0.45; cursor: default; }
+.wx-question-head { font-size: 17px; line-height: 1.4; margin: 0 0 10px; }
+/* The stem a battery of items shares, above the item itself. Quieter and
+   smaller, because it is the same sentence on every item in the battery and
+   the item is what changes. */
+.wx-question-intro {
+  font-size: 13px; line-height: 1.45; color: var(--text-muted);
+  font-weight: 400; margin: 0 0 6px;
+}
+/* The same two weights in the question table, so a row and the heading it
+   loads read the same way round. */
+
+/* Flagging: a triage tool behind ?flag=1, so nothing here is ever seen by a
+   reader. Deliberately plain — it is scaffolding, not part of the dashboard. */
+.wx-question-headrow {
+  display: flex; align-items: flex-start; gap: 12px;
+  justify-content: space-between;
+}
+.wx-question-headrow .wx-question-head { flex: 1; }
+.wx-flag-btn {
+  flex: none; align-self: flex-start;
+  border: 1px solid var(--control-border); border-radius: 6px;
+  background: var(--control-bg); color: var(--text-muted);
+  padding: 5px 11px; font-size: 13px; font-family: inherit; cursor: pointer;
+}
+.wx-flag-btn:hover { border-color: var(--accent); color: var(--accent); }
+.wx-flag-btn.is-on {
+  border-color: var(--accent); background: var(--accent); color: #fff;
+}
+.wx-flag-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* The same flag in a table row: a glyph rather than a labelled button, since
+   it repeats down the page and the column header already names it. */
+.wx-flag-cell {
+  border: 1px solid transparent; border-radius: 6px;
+  background: none; color: var(--text-muted);
+  padding: 2px 7px; font-size: 15px; line-height: 1.2; cursor: pointer;
+}
+.wx-flag-cell:hover { border-color: var(--accent); color: var(--accent); }
+.wx-flag-cell.is-on { color: var(--accent); }
+.wx-flag-cell:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+
+.wx-flag-panel { margin-top: 18px; }
+/* Saved questions: a link beside the downloads, and a panel that appears
+   only once something is saved. */
+/* Set like the download links it sits beside, without their arrow. */
+.wx-save-btn {
+  border: 0; background: none; padding: 2px 0; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; line-height: normal;
+  color: var(--accent);
+  text-decoration: underline; text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+.wx-save-btn:hover { text-decoration-color: currentColor; }
+.wx-save-wrap { position: relative; display: inline-flex; }
+.wx-hover-tip {
+  display: none; position: absolute; top: calc(100% + 8px); left: 0;
+  z-index: 1300; width: min(320px, 82vw);
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  padding: 10px 12px; font-size: 12.5px; font-weight: 400; line-height: 1.5;
+  color: var(--text); text-align: left;
+}
+.wx-save-wrap:hover .wx-hover-tip,
+.wx-save-btn:focus-visible + .wx-hover-tip { display: block; }
+.wx-save-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.wx-saved { margin-top: 18px; scroll-margin-top: 80px; }
+
+.wx-saved-jump {
+  display: inline-block; margin: 2px 0 0 2px; font-size: 13px; font-weight: 600;
+  color: var(--accent); text-decoration: none;
+}
+.wx-saved-jump:hover { text-decoration: underline; text-underline-offset: 3px; }
+.wx-saved-title { font-size: 18px; margin: 0 0 4px; }
+.wx-saved-lede { margin: 0 0 12px; font-size: 13.5px; color: var(--text-muted); }
+.wx-saved-list { list-style: none; margin: 0; padding: 0; }
+.wx-saved-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 0; border-top: 1px solid var(--control-border);
+}
+.wx-saved-open {
+  flex: 1; min-width: 0; text-align: left; font: inherit; color: var(--text);
+  background: none; border: 0; padding: 0; cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.wx-saved-open:hover .wx-saved-q { color: var(--accent); }
+.wx-saved-open:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.wx-saved-open.is-gone { cursor: default; color: var(--text-muted); }
+.wx-saved-meta {
+  font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.wx-saved-q { font-size: 14.5px; line-height: 1.45; }
+.wx-saved-drop {
+  flex: none; width: 26px; height: 26px; line-height: 1; cursor: pointer;
+  border: 1px solid var(--control-border); border-radius: 6px;
+  background: var(--control-bg); color: var(--text-muted);
+}
+.wx-saved-drop:hover { color: var(--accent); border-color: var(--accent); }
+.wx-saved-actions { margin-top: 12px; }
+.wx-saved-actions .wx-pdf-btn { margin-left: 0; }
+.wx-flag-empty { color: var(--text-muted); font-size: 13.5px; }
+.wx-flag-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; font-size: 13px;
+}
+.wx-flag-id { flex: 0 0 260px; font-size: 12px; color: var(--text-muted); }
+.wx-flag-question { flex: 1; min-width: 0; }
+.wx-flag-drop {
+  flex: none; width: 24px; height: 24px; line-height: 1;
+  border: 1px solid var(--control-border); border-radius: 6px;
+  background: var(--control-bg); color: var(--text-muted); cursor: pointer;
+}
+.wx-flag-actions { display: flex; gap: 10px; margin-top: 14px; }
+.wx-flag-actions .wx-pdf-btn { margin-left: 0; }
+
+/* The split-sample version menu, under the question it belongs to. Sits with
+   the heading rather than in the page toolbar: it is a property of this
+   question and it disappears with it. */
+.wx-arm-pick {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 12px;
+}
+.wx-arm-label {
+  font-family: var(--mono, monospace);
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.wx-arm-select {
+  border: 1px solid var(--control-border); border-radius: 6px;
+  background: var(--control-bg); color: var(--text);
+  padding: 5px 9px; font-size: 13.5px; font-family: inherit;
+}
+.wx-arm-select:focus-visible {
+  outline: 3px solid var(--accent); outline-offset: 2px;
+}
+.wx-explore-caption { margin: 10px 4px 0; line-height: 1.5; }
+/* The facts line leads the note in the text color; what follows steps down. */
+.wx-explore-caption .wx-caption-meta {
+  color: var(--text); font-weight: 600; font-size: 13px; margin-bottom: 2px;
+}
+.wx-explore-caption .wx-caption-bars { margin-bottom: 12px; }
+/* The variable and data link close the provenance paragraph rather than
+   standing apart from it. */
+.wx-explore-caption .wx-caption-provenance { margin-bottom: 0; }
+/* The methodology under the chart is reference, read once: a step smaller
+   and lighter than the facts line and bars sentence above it. */
+.wx-explore-caption .wx-caption-provenance,
+.wx-explore-caption .wx-caption-ref { font-size: 11px; color: var(--text-muted); }
+.wx-explore-caption .wx-caption-ref code { font-size: 10px; }
+/* Small print keeps full contrast: fading it with opacity takes it below
+   WCAG AA (3.0:1 at 11px), so it is set in the muted text color instead. */
+.wx-caption-ref { color: var(--text-muted); }
+.wx-caption-ref a { color: var(--accent); }
+.wx-caption-ref code { font-family: var(--mono, monospace); font-size: 11px; }
+.wx-explore-caption p { margin: 0 0 8px; }
+.wx-explore-caption p:last-child { margin-bottom: 0; }
+/* The caption's second paragraph is provenance boilerplate — one step
+   quieter than the survey-line above it, so the numbers stay in front. */
+.wx-caption-provenance { color: var(--text-muted); }
+.wx-caption-provenance a, .wx-explore-caption a { color: var(--accent); }
+.wx-caption-provenance code { font-family: var(--mono, monospace); font-size: 11px; }
+
+/* The selected question and its results. The question is set on the page,
+   not in a card: survey as a small label, the stem it shares with its
+   battery quiet, then the item large, because the item is what changes from
+   one question to the next. */
+.wx-result { display: flex; flex-direction: column; gap: 18px; margin-top: 12px; }
+.wx-result-head { padding: 6px 2px 0; max-width: 980px; }
+.wx-result-survey {
+  margin: 0 0 10px; font-family: var(--mono, monospace); font-size: 11.5px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--accent);
+  font-weight: 600;
+}
+.wx-result-head .wx-question-head.wx-result-item {
+  font-family: var(--font-display); font-size: 26px; line-height: 1.3;
+  font-weight: 700; letter-spacing: -0.01em; margin: 0;
+  color: var(--display-ink, var(--text));
+}
+.wx-result-head .wx-question-intro.wx-result-stem {
+  font-size: 14.5px; line-height: 1.55; margin: 0 0 8px; max-width: 80ch;
+}
+.wx-result-head .wx-arm-pick { margin: 14px 0 0; }
+.wx-arm-shown-label {
+  margin: 0 0 6px; font-size: 13px; color: var(--text-muted);
+}
+.wx-result-head .wx-arm-shown .wx-quiz-quote { font-size: 14.5px; margin-bottom: 14px; }
+/* Controls: the comparison stands alone; the rest folds away. */
+.wx-result-controls {
+  display: flex; align-items: flex-end; gap: 14px 28px; flex-wrap: wrap;
+  padding: 0 2px;
+}
+.wx-result-controls .field-label {
+  font-family: var(--mono, monospace); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted);
+  margin-bottom: 7px;
+}
+.wx-compare .grouping { width: auto; min-width: 280px; font-size: 15px; }
+/* Open, the settings sit beside the disclosure on the same row rather than
+   stacking under it. */
+.wx-chart-options { align-self: flex-end; }
+.wx-chart-options[open] { display: flex; align-items: flex-end; gap: 12px 20px; flex-wrap: wrap; }
+.wx-chart-options > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  font-size: 13.5px; color: var(--text-muted); padding: 9px 2px;
+}
+.wx-chart-options > summary::-webkit-details-marker { display: none; }
+.wx-chart-options > summary::before {
+  content: "\25B8"; display: inline-block; margin-right: 6px;
+  transition: transform .15s;
+}
+.wx-chart-options[open] > summary::before { transform: rotate(90deg); }
+.wx-chart-options > summary:hover { color: var(--accent); }
+.wx-chart-options > summary:focus-visible {
+  outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px;
+}
+.wx-chart-options-body {
+  display: flex; align-items: flex-end; gap: 12px 24px; flex-wrap: wrap;
+}
+.wx-chart-options-body .grouping { width: auto; min-width: 200px; font-size: 13.5px; }
+/* The map's options toggle, like the survey chart's. */
+.wx-map-options-wrap { align-self: flex-end; }
+/* A hint under a menu. On the map bar the controls line up by their labels,
+   not their bottoms, so the hint hangs below without pushing its menu out of
+   line with the others. */
+.wx-field-hint { margin: 6px 2px 0; font-size: 12px; color: var(--text-muted); }
+/* On the map the controls line up by their labels, so the compare hint can
+   hang below its menu; the toggle is nudged down to sit level with the
+   menus. */
+.wx-map-toolbar { align-items: flex-start; }
+.wx-map-toolbar .wx-map-options-wrap { align-self: flex-start; margin-top: 18px; }
+.wx-map-toolbar .grouping { width: auto; min-width: 280px; font-size: 15px; }
+.wx-map-toolbar .wx-chart-options-body .grouping { min-width: 200px; font-size: 13.5px; }
+.wx-map-options > summary { padding: 9px 2px; }
+/* The menu's own label repeats "Map options"; it stays for screen readers
+   but not on screen, so the open menu lines up with the others. */
+.wx-map-options .field-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+/* The chart gets room of its own: generous padding, no shadow. */
+.wx-result-chart { padding: 28px 30px 22px; box-shadow: none; }
+@media (max-width: 700px) {
+  .wx-result-head .wx-question-head.wx-result-item { font-size: 21px; }
+  .wx-compare, .wx-compare .grouping { width: 100%; min-width: 0; }
+  .wx-map-toolbar > div, .wx-map-toolbar .grouping { width: 100%; min-width: 0; }
+  .wx-map-toolbar .wx-map-options-wrap { margin-top: 0; }
+  .wx-result-chart { padding: 18px 14px 16px; }
+}
+
+/* The chart's downloads, set as quiet links under its caption rather than as
+   buttons competing with the comparison control above the chart. */
+.wx-toolbar-actions.wx-result-downloads {
+  margin: 14px 4px 0; margin-left: 4px; padding-top: 12px;
+  justify-content: flex-start;
+  border-top: 1px solid var(--panel-border); gap: 6px 22px;
+}
+.wx-result-downloads .wx-pdf-btn {
+  align-self: auto; border: 0; background: none; padding: 2px 0;
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  text-decoration: underline; text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+/* The map card has no padding of its own, so the links bring theirs. */
+.wx-map-card .wx-toolbar-actions.wx-result-downloads {
+  margin: 4px 18px 0; padding: 12px 0 16px;
+}
+.wx-result-downloads .wx-pdf-btn:hover {
+  color: var(--accent); text-decoration-color: currentColor;
+}
+.wx-result-downloads .wx-pdf-btn::before { content: "\2193\00a0"; }
+
+/* The question browser: filters as labelled menus, a count, and questions as
+   rows divided by hairlines rather than spreadsheet cells. Dense on purpose,
+   because people scan many questions here. */
+.wx-result { scroll-margin-top: 80px; }
+/* Every jump target clears the sticky menu bar. */
+.wx-scan-card { scroll-margin-top: 80px; }
+.wx-browse { padding: 26px 28px 20px; }
+.wx-browse-title {
+  margin: 0 0 4px; font-family: var(--font-display); font-size: 21px;
+  font-weight: 700; color: var(--display-ink, var(--text));
+}
+.wx-browse-lede { margin: 0 0 18px; font-size: 14px; color: var(--text-muted); }
+.wx-browse-filters { display: flex; flex-wrap: wrap; gap: 10px 12px; margin-bottom: 12px; }
+.wx-browse-filters .grouping { width: auto; min-width: 200px; font-size: 14px; }
+.wx-browse-filters .grouping:disabled { opacity: .55; cursor: not-allowed; }
+.wx-browse-searchrow {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding-bottom: 14px; border-bottom: 1px solid var(--panel-border);
+}
+.wx-browse-search {
+  flex: 1 1 320px; max-width: 520px; padding: 8px 12px; font-size: 14px;
+  font-family: inherit; color: var(--text); background: var(--control-bg);
+  border: 1px solid var(--control-border); border-radius: 6px;
+}
+.wx-browse-search:focus { outline: none; border-color: var(--accent); }
+.wx-browse-count {
+  margin-left: auto; font-size: 13.5px; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.wx-browse-list { list-style: none; margin: 0; padding: 0; }
+.wx-browse-row {
+  padding: 13px 10px 12px; border-bottom: 1px solid var(--panel-border);
+  cursor: pointer; border-radius: 4px;
+}
+.wx-browse-row:hover { background: var(--row-hover); }
+.wx-browse-hit { outline: none; }
+.wx-browse-row:has(.wx-browse-hit:focus-visible) { outline: 3px solid var(--accent); outline-offset: -3px; }
+.wx-browse-row.selected { background: var(--row-hover); box-shadow: inset 3px 0 0 var(--accent); }
+.wx-browse-meta {
+  display: flex; gap: 18px; margin-bottom: 5px;
+  font-family: var(--mono, monospace); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.wx-browse-survey { color: var(--accent); }
+.wx-browse-topic { color: var(--text-muted); }
+.wx-browse-stem {
+  margin: 0 0 3px; font-size: 12.5px; line-height: 1.45; color: var(--text-muted);
+}
+.wx-browse-itemrow { display: flex; align-items: baseline; gap: 14px; }
+.wx-browse-item {
+  flex: 1; margin: 0; font-size: 15px; line-height: 1.4; font-weight: 600;
+  color: var(--text);
+}
+.wx-browse-none { padding: 18px 10px; font-size: 14px; color: var(--text-muted); }
+.wx-browse-pager {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-top: 16px;
+}
+.wx-browse-page {
+  border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--accent); cursor: pointer; padding: 4px 2px;
+}
+.wx-browse-page:disabled { color: var(--text-muted); opacity: .45; cursor: default; }
+.wx-browse-page:not(:disabled):hover { text-decoration: underline; text-underline-offset: 3px; }
+.wx-browse-where { font-size: 13.5px; color: var(--text-muted); }
+@media (max-width: 700px) {
+  .wx-browse { padding: 18px 14px 14px; }
+  .wx-browse-filters .grouping { min-width: 0; flex: 1 1 100%; }
+  .wx-browse-count { margin-left: 0; }
+}
+
+/* Download button: a quiet outline button at the right end of its row. */
+.wx-pdf-btn {
+  margin-left: auto; align-self: flex-end;
+  border: 1px solid var(--control-border); border-radius: 6px;
+  background: var(--control-bg); color: var(--text);
+  padding: 8px 14px; font-size: 13.5px; cursor: pointer;
+}
+.wx-pdf-btn:hover { border-color: var(--accent); color: var(--accent); }
+.wx-pdf-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Downloads sit together in one group. .wx-pdf-btn carries
+   margin-left:auto, so two of them loose in the row each push
+   themselves to the right edge and end up at opposite ends of it; the group
+   takes the auto margin once instead. */
+.wx-toolbar-actions {
+  margin-left: auto; display: flex; align-items: flex-end; gap: 10px;
+  flex-wrap: wrap;
+}
+.wx-toolbar-actions .wx-pdf-btn { margin-left: 0; }
+
+/* Map explorer: controls across the top, map full
+   width below. The toolbar needs a stacking context above Leaflet's panes
+   (≤700) so the place-search dropdown overlays the map. */
+.wx-map-toolbar { position: relative; z-index: 800; }
+
+/* The map page sits in the same column as every other page, so titles,
+   controls and cards line up across the site; a ResizeObserver in the
+   engine re-frames CONUS as the column's width changes. */
+
+/* Control labels across the toolbars pick up the label mono
+   vernacular — the theme's typographic signature, applied where people
+   actually operate the dashboard. */
+
+/* Per-measure notes under the map, set like typeset copy: a lede line, the
+   survey items in the left reading column, the methodology and provenance in
+   the right. The prose runs the full width of its column rather than to a
+   reading measure, so the block fills the page it is given. */
+.wx-map-notes { padding: 24px 28px 26px; line-height: 1.6; font-size: 14px; }
+.wx-map-notes .wx-lede {
+  font-family: var(--font-display);
+  font-size: 19px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.35;
+  color: var(--display-ink, var(--text));
+  margin: 0 0 6px;
+}
+/* One sentence under the heading saying what the map shows. */
+.wx-map-notes .wx-note-intro {
+  margin: 0 0 4px; font-size: 15px; line-height: 1.55; color: var(--text-muted);
+}
+.wx-note-cols {
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  column-gap: 56px; margin-top: 12px;
+}
+@media (max-width: 1000px) { .wx-note-cols { grid-template-columns: 1fr; } }
+
+.wx-map-notes ul { margin: 0; padding-left: 20px; }
+.wx-map-notes li { margin: 5px 0; line-height: 1.5; color: var(--text); }
+.wx-map-notes li::marker { color: var(--control-border); }
+.wx-note-cols > div:last-child p{
+  font-size: 13.5px; color: var(--text-muted); margin: 0 0 12px;
+}
+.wx-note-cols > div:last-child p:last-child { margin-bottom: 0; }
+
+.wx-map-notes strong { color: var(--text); }
+/* Comparing: one note per map, in the same two columns and with the same
+   divider the maps above use. Each note's own two-column layout runs as one
+   column here — four columns across the card is not a reading width. */
+
+.wx-map-notes a { color: var(--accent); text-underline-offset: 2px; }
+
+/* Scan sheet — every measure for one area, under the map. Six columns held in
+   one grid so the dots line up down the page: that column IS the instrument,
+   and a per-row layout would let each strip drift by the width of its label. */
+.wx-scan-card { padding: 22px 26px 24px; margin-top: 20px; --scan-width: 820px; }
+.wx-scan-head {
+  display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;
+  padding-bottom: 14px; border-bottom: 1px solid var(--panel-border);
+}
+
+.wx-scan-sub {
+  font-family: var(--mono, monospace); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-muted); margin: 5px 0 0;
+}
+/* The sheet's one heading: what it is, which area, how many measures. */
+.wx-scan-heading {
+  font-size: 13px; letter-spacing: 0.1em; margin: 0;
+  color: var(--display-ink, var(--text));
+}
+.wx-scan-actions { margin-left: auto; display: flex; gap: 14px; align-items: center; }
+.wx-scan-actions .wx-pdf-btn { margin-left: 0; align-self: center; }
+.wx-clear-btn {
+  border: none; background: none; color: var(--text-muted);
+  font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.wx-clear-btn:hover { color: var(--accent); }
+.wx-clear-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* On the map card, in its top-right corner above Leaflet's panes. Plain
+   text, like Clear on the overview sheet: the corner is the card's own
+   background in both layouts, so it needs no chip to be read. */
+.wx-map-card { position: relative; box-shadow: none; }
+/* How to use the map, under it: the one instruction the page needs. */
+.wx-map-hint { margin: 10px 18px 0; }
+.wx-map-clear { position: absolute; top: 12px; right: 16px; z-index: 1000; }
+.wx-scan-lede p {
+  font-size: 13.5px; color: var(--text-muted); max-width: var(--scan-width);
+  margin: 14px 0 0; line-height: 1.55;
+}
+.wx-scan-key {
+  display: flex; gap: 22px; flex-wrap: wrap; align-items: center;
+  font-size: 12px; color: var(--text-muted); margin: 12px 0 4px;
+  max-width: var(--scan-width);
+}
+.wx-scan-key span { display: inline-flex; align-items: center; gap: 5px; }
+.wx-scan-hint { margin-left: auto; font-style: italic; }
+
+/* Held to --scan-width rather than the page: a row whose label sits a third
+   of a screen from its marks cannot be read across. The prose above and below
+   takes the same width, so the sheet reads as one block.
+
+   The label track is a fixed width rather than max-content because every row
+   is its own grid — a content-sized track resolves per row, and the columns
+   come out ragged down the sheet. 260px holds the longest label on one line;
+   the strip takes whatever is left. */
+.wx-scan-table { margin-top: 4px; max-width: var(--scan-width); }
+.wx-scan-cols, .wx-scan-row {
+  display: grid;
+  grid-template-columns: 260px 46px 1fr 46px 58px 54px;
+  align-items: center; column-gap: 10px;
+}
+.wx-scan-plot { min-width: 0; }
+.wx-scan-strip { max-width: 100%; }
+.wx-scan-cols { padding: 0 8px 6px; }
+.wx-scan-colhead {
+  font-family: var(--mono, monospace); font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted);
+}
+.wx-scan-center { text-align: center; }
+.wx-scan-right { text-align: right; }
+
+.wx-scan-group {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--mono, monospace); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent-contrast); background: var(--display-ink, var(--text));
+  padding: 5px 8px; margin: 12px 0 0; border-radius: 3px;
+}
+
+.wx-scan-row {
+  width: 100%; text-align: left; font: inherit; color: var(--text);
+  border: none; border-bottom: 1px solid var(--panel-border);
+  background: none; padding: 2px 8px; cursor: pointer;
+}
+.wx-scan-row.is-band { background: var(--row-hover); }
+.wx-scan-row:hover { background: var(--row-selected); }
+.wx-scan-row:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+/* The mapped measure keeps a marker in the margin, so the sheet says which
+   row the map above it is showing. */
+.wx-scan-row.is-current { box-shadow: inset 3px 0 0 var(--accent); }
+.wx-scan-row.is-current .wx-scan-label { font-weight: 650; }
+.wx-scan-label { font-size: 13.5px; line-height: 1.3; }
+.wx-scan-lo, .wx-scan-hi {
+  font-family: var(--mono, monospace); font-size: 10.5px; color: var(--text-muted);
+}
+.wx-scan-lo { text-align: right; }
+.wx-scan-plot { display: block; line-height: 0; }
+.wx-scan-value {
+  font-family: var(--mono, monospace); font-size: 13px; font-weight: 700;
+  text-align: right; color: var(--display-ink, var(--text));
+}
+.wx-scan-pct {
+  font-family: var(--mono, monospace); font-size: 11.5px;
+  text-align: right; color: var(--text-muted);
+}
+.wx-scan-note p {
+  font-size: 12.5px; color: var(--text-muted); max-width: var(--scan-width);
+  margin: 14px 0 0; line-height: 1.55;
+}
+.wx-scan-note a { color: var(--accent); }
+.wx-scan-link { display: inline-block; margin-top: 6px; font-size: 12.5px; }
+
+/* Narrow screens: the strip drops onto its own line under the label rather
+   than out of the sheet — it is the reason the sheet exists. */
+@media (max-width: 860px) {
+  .wx-scan-cols { display: none; }
+  .wx-scan-card { padding: 18px 14px 20px; }
+  .wx-scan-row {
+    grid-template-columns: 1fr 58px 54px; row-gap: 2px; padding: 6px 8px;
+  }
+  .wx-scan-lo, .wx-scan-hi { display: none; }
+  .wx-scan-plot { grid-column: 1 / -1; }
+  .wx-scan-actions { margin-left: 0; }
+}
+
+/* Comparison as two maps rather than a crossfade:
+   one measure, one alert history, drawn at the same size on the same page.
+   A fade shows one picture at a time and asks the reader to remember the
+   other; two maps let the eye travel between them. */
+.wx-map-pair { display: grid; grid-template-columns: 1fr; }
+
+/* min-width:0 or the grid tracks refuse to shrink below the maps' content
+   width and the card overflows the page. */
+.wx-map-pane { min-width: 0; }
+
+/* Half the width means half the map: aspect-ratio keeps CONUS filling its
+   frame instead of floating in a letterbox the fixed height would leave. */
+
+/* One map names itself in its legend; the heading would only repeat it. */
+
+.wx-legend-row { display: flex; flex-wrap: wrap; column-gap: 40px; }
+.wx-legend-row .wx-legend { flex: 1 1 320px; max-width: 560px; }
+
+/* Legend joins the data vernacular: mono title and endpoints. */
+.wx-legend-title {
+  font-family: var(--mono, monospace);
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.wx-legend-labels { font-family: var(--mono, monospace); font-size: 11px; }
+
+/* Hover tooltip: place name in ink, value as a monospace readout. */
+.wx-tt-val { font-family: var(--mono, monospace); font-size: 12px; font-weight: 600; }
+.wx-tip-hint { color: #666; font-size: 11.5px; }
+
+@media (max-width: 700px) {
+  
+  
+  
+  
+  .wx-pdf-btn { margin-left: 0; }
+}
+
+.wx-landing-page .content { max-width: 1180px; margin: 0 auto; }
+
+/* ============ Navbar =================================================== */
+/* Scoped to the light and dark themes: full-height text links whose active underline
+   docks onto the viridis spectrum strip; institutional brand lockup; ghost
+   theme button. The greyscale theme keeps the base navbar. */
+
+html[data-theme="s3ok"] #navbar,
+html[data-theme="dark"] #navbar { height: 60px; gap: 26px; }
+
+html[data-theme="s3ok"] #nav-title,
+html[data-theme="dark"] #nav-title { line-height: 1.15; }
+html[data-theme="s3ok"] .brand-sub,
+html[data-theme="dark"] .brand-sub {
+  display: block;
+  font-family: var(--mono);
+  font-size: 8.5px; letter-spacing: 0.18em; text-transform: uppercase;
+  font-weight: 400;
+}
+html[data-theme="s3ok"] .brand-sub { color: rgba(240, 238, 248, 0.55); }
+html[data-theme="dark"]  .brand-sub { color: rgba(203, 213, 225, 0.5); }
+@media (max-width: 1080px) {
+  html[data-theme="s3ok"] .brand-sub, html[data-theme="dark"] .brand-sub { display: none; }
+}
+
+html[data-theme="s3ok"] #nav-pages,
+html[data-theme="dark"] #nav-pages {
+  align-self: stretch; gap: 0; flex-wrap: nowrap; overflow-x: auto;
+}
+html[data-theme="s3ok"] #nav-pages a, html[data-theme="s3ok"] #nav-pages .nav-group-btn,
+html[data-theme="dark"] #nav-pages a, html[data-theme="dark"] #nav-pages .nav-group-btn {
+  display: flex; align-items: center; height: 100%;
+  padding: 3px 13px 0;               /* top pad balances the 3px indicator */
+  border-radius: 0; font-size: 14px; white-space: nowrap;
+  border-bottom: 3px solid transparent;
+}
+html[data-theme="s3ok"] #nav-pages a, html[data-theme="s3ok"] #nav-pages .nav-group-btn { color: rgba(240, 238, 248, 0.7); }
+html[data-theme="dark"]  #nav-pages a, html[data-theme="dark"] #nav-pages .nav-group-btn { color: rgba(203, 213, 225, 0.7); }
+html[data-theme="s3ok"] #nav-pages a:hover, html[data-theme="s3ok"] #nav-pages .nav-group-btn:hover,
+html[data-theme="dark"] #nav-pages a:hover, html[data-theme="dark"] #nav-pages .nav-group-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--nav-text);
+}
+html[data-theme="s3ok"] #nav-pages a.active, html[data-theme="s3ok"] #nav-pages .nav-group-btn.active,
+html[data-theme="dark"] #nav-pages a.active, html[data-theme="dark"] #nav-pages .nav-group-btn.active {
+  background: none; color: #ffffff;
+  border-bottom-color: #ffffff; font-weight: 600;
+}
+/* Group wrapper must stretch so the button keeps the full-height underline. */
+html[data-theme="s3ok"] #nav-pages .nav-group,
+html[data-theme="dark"] #nav-pages .nav-group { display: flex; align-self: stretch; }
+
+html[data-theme="s3ok"] #theme-btn,
+html[data-theme="dark"] #theme-btn {
+  background: transparent; color: var(--nav-text);
+  border: 1px solid rgba(255, 255, 255, 0.28); border-radius: 6px;
+}
+html[data-theme="s3ok"] #theme-btn:hover,
+html[data-theme="dark"] #theme-btn:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* ============ Responsive ================================================ */
+/* Base rules first (all themes): wrap the
+   navbar, keep tables scrollable instead of crushed. Then theme-specific
+   tuning. Desktop widths are unaffected. */
+
+@media (max-width: 900px) {
+  /* align-items:flex-start is right for the row layout, but in a column it
+     stops children stretching — .content would shrink-to-fit and Leaflet
+     would init against a ~0-width map div. */
+  .page { flex-direction: column; align-items: stretch; }
+  #app { padding: 12px; }
+  .chart-wrap { height: 420px; }
+  table.data { min-width: 560px; }   /* .table-scroll provides the scroll */
+}
+
+@media (max-width: 820px) {
+  #navbar {
+    height: auto; min-height: 54px;
+    flex-wrap: wrap; padding: 10px 12px; gap: 8px 16px;
+    position: static;                 /* two rows sticky would eat the viewport */
+  }
+  #nav-pages {
+    order: 3; flex-basis: 100%;
+    flex-wrap: nowrap; overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  #nav-pages::-webkit-scrollbar { display: none; }
+  #nav-pages a { white-space: nowrap; }
+  #theme-switch { margin-left: auto; }
+  #theme-menu { top: 34px; }
+}
+
+/* Navbar overrides for the same breakpoint (these selectors outrank
+   the base #navbar rules, so the desktop 60px height must be re-set here). */
+@media (max-width: 820px) {
+  html[data-theme="s3ok"] #navbar,
+  html[data-theme="dark"] #navbar { height: auto; gap: 8px 16px; }
+  html[data-theme="s3ok"] #nav-pages,
+  html[data-theme="dark"] #nav-pages { align-self: auto; }
+  html[data-theme="s3ok"] #nav-pages a,
+  html[data-theme="dark"] #nav-pages a { height: 42px; border-bottom-width: 2px; }
+}
+
+/* Surfaces on small screens */
+@media (max-width: 640px) {
+  
+  
+  
+  
+    .wx-map { height: min(64vh, 520px); min-height: 340px; }
+    .chart-wrap { height: 360px; }
+  .chart-wrap.tall { height: 430px; }
+  .wx-legend { padding: 8px 12px; }
+}
+
+/* ============ Methodology affordances =================================== */
+/* "What does this number mean?" popovers — text from config.explainers.
+   Panels open BELOW their trigger (house preference). */
+.tip-wrap { position: relative; display: inline-block; }
+.tip-btn {
+  border: 1px solid var(--control-border); background: var(--control-bg);
+  color: var(--text-muted); width: 18px; height: 18px; border-radius: 50%;
+  font-size: 11px; font-weight: 600; line-height: 1; padding: 0;
+  cursor: pointer; vertical-align: 2px;
+}
+.tip-btn:hover, .tip-wrap.open .tip-btn { color: var(--accent); border-color: var(--accent); }
+.tip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tip-btn.text {
+  width: auto; height: auto; border: none; background: none; border-radius: 0;
+  font-size: 12.5px; font-weight: 400; color: var(--accent);
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.tip-panel {
+  display: none; position: absolute; top: calc(100% + 8px); left: 0; z-index: 1300;
+  width: min(320px, 82vw);
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  padding: 12px 14px; font-size: 12.5px; font-weight: 400; line-height: 1.5;
+  color: var(--text); text-align: left; text-transform: none; letter-spacing: normal;
+}
+.tip-panel.align-right { left: auto; right: 0; }
+.tip-wrap.open .tip-panel { display: block; }
+.tip-panel p { margin: 0 0 8px; }
+.tip-panel p:last-child { margin-bottom: 0; }
+
+/* ============ Nav dropdowns + footer + table page-size ================== */
+
+/* Dropdown group: panel opens under the navbar; menu links use panel colors
+   regardless of theme (html prefix out-specifies the theme nav rules). */
+.nav-group { position: relative; }
+.nav-caret { font-size: 10px; opacity: 0.7; }
+#nav-pages .nav-menu {
+  /* fixed + JS-set coordinates: escapes the navbar's overflow clip */
+  display: none; position: fixed;
+  min-width: 230px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 0 0 8px 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+#nav-pages .nav-group.open .nav-menu { display: block; }
+html #nav-pages .nav-menu a {
+  display: block; height: auto; padding: 9px 12px;
+  color: var(--text); border-radius: 6px; border-bottom: 0; font-weight: 400;
+}
+html #nav-pages .nav-menu a:hover { background: var(--row-hover); color: var(--text); }
+html #nav-pages .nav-menu a.active { background: var(--row-selected); color: var(--text); font-weight: 600; }
+
+/* Footer: navbar-colored bookend — an unmistakable end of page. */
+#site-footer {
+  margin-top: 56px;
+  background: var(--nav-bg); color: var(--nav-text);
+  border-top: 3px solid var(--accent);
+}
+.foot-inner {
+  max-width: 1500px; margin: 0 auto; padding: 34px 20px 30px;
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 40px; align-items: start;
+}
+#site-footer .brand-name { font-weight: 700; font-size: 16px; letter-spacing: 0.02em; }
+.foot-tag { margin: 8px 0 0; font-size: 13px; opacity: 0.72; line-height: 1.55; max-width: 44ch; }
+.foot-links { display: flex; flex-direction: column; gap: 8px; }
+.foot-links a { color: inherit; opacity: 0.85; text-decoration: none; font-size: 13.5px; width: fit-content; }
+.foot-links a:hover { opacity: 1; text-decoration: underline; text-underline-offset: 3px; }
+.foot-meta p { margin: 0 0 10px; font-size: 12.5px; opacity: 0.72; line-height: 1.55; }
+.foot-build { font-family: var(--mono, monospace); font-size: 10.5px; letter-spacing: 0.12em; opacity: 0.45; }
+@media (max-width: 860px) {
+  .foot-inner { grid-template-columns: 1fr; gap: 22px; }
+}
+
+/* Test Your Knowledge quiz: one question at a time, options as full-width
+   quiet buttons; the correct answer keeps the accent, a wrong pick fades.
+   Marks (✓/✗) carry the state — never color alone. */
+
+/* The same 2px inset the explore pages give their headings and controls,
+   so everything but the card lines up under the page title. */
+
+/* Answers, reveal and buttons keep a reading width; the chart card takes
+   the column, as the explore pages' figures do. */
+
+/* The survey question over the reveal chart, set as the survey page sets
+   one: a small label, the stem quiet, the item in weight. */
+
+.wx-result-downloads .wx-foot-link {
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  text-decoration: underline; text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+.wx-result-downloads .wx-foot-link:hover { text-decoration-color: currentColor; }
+/* The title sits over the card's left edge, not the page's, so the two read
+   as one column. */
+
+.wx-quiz-quote strong { font-style: normal; }
+/* The pairs respondents compared, one row per example. */
+
+.wx-quiz-quote {
+  margin: 0 0 16px 2px; max-width: 800px; padding: 2px 0 2px 16px;
+  border-left: 3px solid var(--control-border);
+  font-size: 16px; line-height: 1.55; font-style: italic; color: var(--text);
+}
+
+/* The answer, set off as a callout so it is the first thing read after
+   answering: a tinted panel with an accent rule, the verdict on its own line
+   in bold, the finding under it at reading size. */
+
+.wx-quiz-explore { color: var(--accent); font-size: 14.5px; }
+
+/* Quiet, under the progress grid: there for the reader who wants it, not a
+   call to action. */
+
+/* Progress: one segment per prompt. State is carried by the ✓/✗ glyph, not
+   color alone (greyscale theme: correct=accent bg vs wrong=muted bg are both
+   near-black there — the glyphs do the work). */
+/* The progress bar as a table of sections: the name in the first column,
+   its prompts' segments in the second, one row per section. */
+
+/* The current prompt is marked inside its own box, so it stays the same
+   size as its neighbours rather than pushing into them. */
+/* Twelve hazards read better in two columns than in one long list. */
+
+/* The community look-up's picker, sized like the answer buttons. */
+
+/* Reveal chart: the real distribution, rendered with the explorer's own
+   chart machinery. .grouped = follow-up subgroup split (more bars + legend). */
+
+/* Finale recap: per-question marks + topic + explorer deep link. */
+
+/* One labelled mark per part, wrapping within a fixed column. */
+
+/* Theme heads in the recap, set like the question label above each
+   question so the two read as the same scheme. */
+
+/* Question/reveal entrances (charts animate via Chart.js on draw). */
+
+@keyframes wx-quiz-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Rows-per-page control in table tools. */
+
+/* Text for screen readers only: on the page for assistive technology, off
+   the screen for everyone else (the tables behind each chart and map). */
+.wx-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ================= S3OK additions ====================================== */
+
+/* ---------- landing: the map of the panel -------------------------------
+   The map wants more room than the dot field it replaces, so the two
+   columns sit nearer even. */
+.wx-landing-top.s3-landing-map {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 32px 48px;
+}
+.s3-heromap-canvas { display: block; width: 100%; height: auto; }
+@media (max-width: 900px) {
+  .wx-landing-top.s3-landing-map { grid-template-columns: 1fr; }
+  .wx-dotfield.s3-heromap { max-width: none; }
+}
+
+/* Four ways into the data rather than three: two by two until the page is
+   wide enough for one row. */
+.wx-explore-cards.s3-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1200px) {
+  .wx-explore-cards.s3-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .wx-explore-cards.s3-four { grid-template-columns: 1fr; }
+}
+
+/* ---------- the regions map ---------------------------------------------
+   Oklahoma is about twice as wide as it is tall, so the frame takes the
+   state's shape rather than the 620px block a national map fills. */
+.wx-map.s3-map, .wx-map.s3-map.leaflet-container {
+  height: auto; aspect-ratio: 2.05 / 1; max-height: 640px;
+}
+.wx-popup-measure { color: var(--text-muted); font-size: 12.5px; }
+/* A popup over a northern region rises past the top of the map, so neither
+   the map nor its card may clip it. */
+.wx-map-page .wx-map-card, .wx-map.s3-map.leaflet-container { overflow: visible; }
+/* Above the controls (z-index 800), which the popup may cover. */
+.wx-map-page .wx-map-card { position: relative; z-index: 900; }
+
+/* ---------- policy narratives --------------------------------------------
+   The question browser's list, with each row an answer in three parts set
+   side by side under the three questions respondents were asked. Rows are for
+   reading, not clicking, so they lose the pointer and the hover tint. */
+.s3-narr .wx-browse-filters { margin-bottom: 12px; }
+.s3-narr-cols, .s3-narr-parts {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 32px;
+}
+.s3-narr-cols {
+  padding: 14px 10px 10px; border-bottom: 1px solid var(--panel-border);
+  font-size: 12.5px; line-height: 1.45; color: var(--text-muted);
+}
+.wx-browse-row.s3-narr-row { cursor: default; padding: 16px 10px 16px; }
+.wx-browse-row.s3-narr-row:hover { background: none; }
+.s3-narr-row .wx-browse-meta { margin-bottom: 8px; }
+.s3-narr-label {
+  display: none; margin: 0 0 3px;
+  font-family: var(--mono, monospace); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted);
+}
+.s3-narr-text {
+  margin: 0; font-size: 14.5px; line-height: 1.55; overflow-wrap: anywhere;
+}
+.s3-narr-text.is-empty { color: var(--text-muted); font-style: italic; }
+.s3-narr .wx-explore-caption { margin: 18px 10px 0; }
+/* Stacked on a narrow screen, where the three questions above the list no
+   longer sit over their columns: each part carries its own short label. */
+@media (max-width: 820px) {
+  .s3-narr-cols { display: none; }
+  .s3-narr-parts { grid-template-columns: 1fr; gap: 12px; }
+  .s3-narr-label { display: block; }
+}
+
+/* ---------- About: funders ----------------------------------------------- */
+.s3-funders {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 18px 32px;
+  margin: 16px 0 6px;
+}
+.s3-funders img { display: block; height: 64px; width: auto; }
+.s3-funders img.s3-funder-wide { height: 44px; }
+/* The logos are drawn for a white page. */
+html[data-theme="dark"] .s3-funders {
+  background: #ffffff; padding: 12px 16px; border-radius: 6px; width: fit-content;
+}
+.s3-wave-table { border-collapse: collapse; margin: 6px 0 16px; font-size: 14px; }
+.s3-wave-table th, .s3-wave-table td {
+  text-align: left; padding: 6px 22px 6px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+.s3-wave-table th {
+  font-family: var(--mono, monospace); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted);
+}
+.s3-wave-table td.num, .s3-wave-table th.num {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+
+/* ---------- each respondent across waves ---------------------------------
+   Drawn by hand on its own canvas in the chart's frame. */
+.s3-paths-canvas { display: block; }

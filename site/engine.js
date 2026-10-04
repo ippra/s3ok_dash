@@ -795,174 +795,96 @@ function chartAlt(canvas, { cats, groups, lookup, valueLabel, title, ci = false,
   canvas._altTable = hidden;
 }
 
-/* Each respondent across waves: a line per person through the answer they
- * gave in each wave, on a balanced sample (02 keeps only respondents who
- * answered in every wave that asked the question). Waves run left to right
- * and the answers bottom to top in the instrument's order.
- *
- * Answers are categories, so everyone who gave the same answers would draw
- * the same line and a thousand people would look like a dozen. Each person's
- * line is therefore lifted or lowered by a small fixed amount within its
- * answer band, the same amount at every wave, so someone who never changed
- * stays a level line and a bundle's thickness shows how many travel together.
- * The offsets come from a seeded generator, so a redraw does not reshuffle
- * the picture.
- *
- * `series` says how the lines are colored: its groups and their colors, and
- * `of(row)`, which gives a row's group as a position in them (or -1 for a
- * person in no charted group, who is not drawn), and, where the options are
- * ordered, `means`: each group's average answer in each wave. With more than
- * one group a key is set under the wave labels.
- *
- * Draws into (x, y, w, h) of whatever context it is given, so the page and
- * the downloaded figure are the same drawing at two sizes. */
-function drawPanelPaths(ctx, x, y, w, h, panel, options, t, series) {
-  const k = panel.waves.length, m = options.length;
-  const row = new Map(options.map((o, j) => [String(o.value), j]));
-  const labels = options.map(o => wrapTickLabel(o.label, 24, 3).split("\n"));
-  ctx.font = `400 ${t.size}px ${t.family}`;
-  const left = Math.min(w * 0.3, 16 + Math.max(...labels.flat()
-    .map(l => ctx.measureText(l).width)));
-  const keyed = series.groups.length > 1;
-  const top = 10, bottom = 46 + (keyed ? 34 : 0), right = 58;
-  const px = (i) => x + left + (w - left - right) * (k === 1 ? 0.5 : i / (k - 1));
-  const band = (h - top - bottom) / m;
-  // The last option at the top, so on a scale a line that rises is an answer
-  // that rose.
-  const py = (j) => y + top + band * (m - 1 - j + 0.5);
-
-  // The frame: a rule per answer, an axis per wave.
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = t.grid;
-  ctx.beginPath();
-  for (let j = 0; j <= m; j++) {
-    const gy = Math.round(y + top + band * j) + 0.5;
-    ctx.moveTo(px(0), gy); ctx.lineTo(px(k - 1), gy);
+/* Change over time: a line chart from long rows [{series, wave, value, label,
+   low, upp}], one line per series (a group, or an answer option) across the
+   waves. The same options as groupedBarChart where they apply, so the two
+   views read alike: the value axis's title, a legend keyed by what the lines
+   split on, intervals on request, and a standalone mode for the download.
+   `yTicks` labels the value axis with the answer options where the value is
+   an average position among them. */
+function trendChart(canvas, rows, { yLabel = "", yTicks = null, yMax = null,
+    showCI = false, colors = null, legend = true, legendTitle = "Group",
+    standalone = false, pixelRatio = null, labelSize = null, altTitle = "",
+    ciDigits = 1, waveNames = {} }) {
+  const seriesSeen = [], wavesSeen = [];
+  for (const r of rows) {
+    if (!seriesSeen.includes(r.series)) seriesSeen.push(r.series);
+    if (!wavesSeen.includes(r.wave)) wavesSeen.push(r.wave);
   }
-  ctx.stroke();
-  ctx.strokeStyle = t.axis;
-  ctx.beginPath();
-  for (let i = 0; i < k; i++) {
-    const gx = Math.round(px(i)) + 0.5;
-    ctx.moveTo(gx, y + top); ctx.lineTo(gx, y + h - bottom);
-  }
-  ctx.stroke();
-  ctx.fillStyle = t.ink; ctx.textBaseline = "middle"; ctx.textAlign = "right";
-  labels.forEach((lines, j) => lines.forEach((ln, n) =>
-    ctx.fillText(ln, x + left - 12,
-      py(j) + (n - (lines.length - 1) / 2) * (t.size + 3))));
-  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-  const names = CONFIG.wave_names || {};
-  panel.waves.forEach((wv, i) => {
-    ctx.fillStyle = t.ink; ctx.font = `600 ${t.size}px ${t.family}`;
-    ctx.fillText("Wave " + wv, px(i), y + h - bottom + 20);
-    if (names[wv] && (w - left - right) / k > 92) {
-      ctx.fillStyle = t.muted; ctx.font = `400 ${t.size - 2}px ${t.family}`;
-      ctx.fillText(names[wv], px(i), y + h - bottom + 36);
-    }
+  wavesSeen.sort((a, b) => a - b);
+  const lookup = new Map(rows.map(r => [r.series + "\x1F" + r.wave, r]));
+  colors = colors || viridis(seriesSeen.length);
+  const ink = getComputedStyle(document.body).getPropertyValue("--text").trim() || "#000";
+  const cell = (name, w) => lookup.get(name + "\x1F" + w);
+  const datasets = seriesSeen.map((name, i) => ({
+    label: name,
+    borderColor: colors[i], backgroundColor: colors[i],
+    pointRadius: 4, pointHoverRadius: 6, borderWidth: 2.5, tension: 0,
+    spanGaps: false,
+    data: wavesSeen.map(w => { const r = cell(name, w); return r ? r.value : null; }),
+    barLabels: wavesSeen.map(w => { const r = cell(name, w); return r ? String(r.label ?? "") : ""; }),
+    ...(showCI ? {
+      errorLow: wavesSeen.map(w => { const r = cell(name, w); return r && r.low != null ? r.low : null; }),
+      errorHigh: wavesSeen.map(w => { const r = cell(name, w); return r && r.upp != null ? r.upp : null; })
+    } : {})
+  }));
+  if (!standalone && activeChart) { activeChart.destroy(); activeChart = null; }
+  // The wave's dates under its number.
+  const tick = (w) => waveNames[w] ? ["Wave " + w, waveNames[w]] : "Wave " + w;
+  const chart = new Chart(canvas, {
+    type: "line",
+    data: { labels: wavesSeen.map(tick), datasets },
+    options: {
+      responsive: !standalone,
+      maintainAspectRatio: false,
+      ...(standalone ? { animation: false, devicePixelRatio: pixelRatio || 1 } : {}),
+      interaction: { mode: "nearest", intersect: false, axis: "x" },
+      layout: { padding: { top: 20, right: 24 } },
+      plugins: {
+        title: { display: false },
+        legend: legend ? { position: "bottom",
+                           title: { display: !!legendTitle, text: legendTitle } }
+          : { display: false },
+        // Values on the points only for a single line: several lines' labels
+        // crowd one another. The intervals take their place when drawn.
+        datalabels: showCI || seriesSeen.length > 1 ? { display: false } : {
+          align: "top", offset: 6, clip: false, color: ink,
+          font: { size: labelSize || 11 },
+          formatter: (v, ctx) => ctx.dataset.barLabels[ctx.dataIndex]
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const base = `${ctx.dataset.label}: ${ctx.dataset.barLabels[ctx.dataIndex]}`;
+              const lo = ctx.dataset.errorLow && ctx.dataset.errorLow[ctx.dataIndex];
+              const hi = ctx.dataset.errorHigh && ctx.dataset.errorHigh[ctx.dataIndex];
+              return lo != null && hi != null
+                ? `${base} (95% CI ${lo.toFixed(ciDigits)}\u2013${hi.toFixed(ciDigits)})` : base;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { autoSkip: false } },
+        y: yTicks
+          // An average position among the answers: the axis runs over the
+          // answers themselves, the first at the bottom.
+          ? { min: 1, max: yTicks.length, title: { display: !!yLabel, text: yLabel },
+              ticks: { stepSize: 1, callback: (v) => yTicks[Math.round(v) - 1] || "" } }
+          : { beginAtZero: true, ...(yMax != null ? { max: yMax } : { grace: "10%" }),
+              title: { display: !!yLabel, text: yLabel } }
+      }
+    },
+    plugins: [ChartDataLabels, ErrorBarsPlugin]
   });
-
-  // A small seeded generator (mulberry32), keyed to the question.
-  let seed = 0;
-  for (const c of String(panel.id)) seed = (seed * 31 + c.charCodeAt(0)) >>> 0;
-  const rand = () => {
-    seed = (seed + 0x6D2B79F5) >>> 0;
-    let z = seed;
-    z = Math.imul(z ^ (z >>> 15), z | 1);
-    z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
-    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
-  };
-  // One entry per person, in a shuffled order, so no pattern is always
-  // drawn over another.
-  const people = [];
-  const size = series.groups.map(() => 0);
-  for (const p of panel.paths) {
-    const gi = series.of(p);
-    if (gi < 0) continue;
-    size[gi] += p.n;
-    const rows = p.path.split(",").map(v => row.get(v));
-    for (let n = 0; n < p.n; n++)
-      people.push({ rows, gi, off: (rand() - 0.5) * 0.74 });
+  if (!standalone) {
+    activeChart = chart;
+    chartAlt(canvas, { cats: wavesSeen.map(w => "Wave " + w), groups: seriesSeen,
+      lookup: new Map(rows.map(r => [r.series + "\x1FWave " + r.wave, {
+        label: r.label, value: r.value, low: r.low, upp: r.upp }])),
+      valueLabel: yLabel, title: altTitle, ci: showCI, ciDigits });
   }
-  for (let i = people.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [people[i], people[j]] = [people[j], people[i]];
-  }
-  // Fainter the more lines a group has, so density reads as depth of color
-  // and a small group is not lost beside a large one.
-  const alpha = size.map(n => Math.max(0.06, Math.min(0.5, 60 / Math.max(1, n))));
-  ctx.lineWidth = t.lineWidth; ctx.lineJoin = "round";
-  for (const person of people) {
-    ctx.globalAlpha = alpha[person.gi];
-    ctx.strokeStyle = series.colors[person.gi];
-    ctx.beginPath();
-    person.rows.forEach((j, i) => {
-      const cx = px(i), cy = py(j) + person.off * band;
-      // Straight from one wave to the next. The offset is vertical only:
-      // every point sits exactly on its wave's axis.
-      if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
-    });
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
-  // The average answer in each wave, where the options are ordered: a heavy
-  // line per group in the group's color, edged in the theme's ink. The edge
-  // is what keeps the palest group's line readable, which a halo in the
-  // card's own color would not. A mean is a position among the options (1
-  // for the first), so it sits between two answers' bands.
-  if (series.means) {
-    const at = (pos) => y + top + band * (m - pos + 0.5);
-    const trace = (values) => {
-      ctx.beginPath();
-      values.forEach((v, i) => i ? ctx.lineTo(px(i), at(v)) : ctx.moveTo(px(i), at(v)));
-      ctx.stroke();
-    };
-    ctx.lineJoin = "round"; ctx.lineCap = "round";
-    series.groups.forEach((g, i) => {
-      const values = series.means[g];
-      if (!values) return;
-      ctx.strokeStyle = t.ink; ctx.lineWidth = t.lineWidth * 4.6; trace(values);
-      ctx.strokeStyle = series.colors[i]; ctx.lineWidth = t.lineWidth * 3; trace(values);
-      values.forEach((v, k2) => {
-        ctx.beginPath(); ctx.arc(px(k2), at(v), t.lineWidth * 3.6, 0, Math.PI * 2);
-        ctx.fillStyle = series.colors[i]; ctx.fill();
-        ctx.strokeStyle = t.ink; ctx.lineWidth = t.lineWidth * 0.8; ctx.stroke();
-      });
-    });
-    ctx.lineCap = "butt";
-  }
-
-  // The key, centered under the wave labels: what the colors split on, then
-  // a swatch and a name for each group.
-  if (keyed) {
-    ctx.font = `400 ${t.size}px ${t.family}`;
-    ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    const title = series.title ? series.title + ":" : "";
-    const widths = series.groups.map(g => 22 + ctx.measureText(g).width + 16);
-    const total = (title ? ctx.measureText(title).width + 12 : 0) +
-      widths.reduce((a, b) => a + b, 0);
-    let kx = x + Math.max(0, (w - total) / 2);
-    const ky = y + h - 15;
-    if (title) {
-      ctx.fillStyle = t.muted; ctx.fillText(title, kx, ky);
-      kx += ctx.measureText(title).width + 12;
-    }
-    series.groups.forEach((g, i) => {
-      ctx.fillStyle = series.colors[i]; ctx.fillRect(kx, ky - 5, 16, 10);
-      ctx.fillStyle = t.ink; ctx.fillText(g, kx + 22, ky);
-      kx += widths[i];
-    });
-  }
-}
-
-// The theme's own colors for that drawing, read when it is drawn.
-function panelPathTheme(size, lineWidth) {
-  const css = getComputedStyle(document.body);
-  const tok = (n, d) => css.getPropertyValue(n).trim() || d;
-  return { size, lineWidth, family: css.fontFamily,
-    ink: tok("--text", "#232130"), muted: tok("--text-muted", "#6a6780"),
-    grid: tok("--panel-border", "#e2e1ec"), axis: tok("--control-border", "#c9c6dd") };
+  return chart;
 }
 
 /* ------------------------------------------------------------ components -- */
@@ -1038,10 +960,10 @@ components.explore = async function (page, container) {
   const questions = await fetchJSON(page.questions.replace(/^data\//, "data/"));
   let grouping = urlGrouping() || page.default_grouping || "All";
   let showCI = getParam("ci") === "1";   // ?ci=1 deep-links the CI view
-  // ?view=paths deep-links the view of each respondent across waves, which
-  // only questions asked in more than one wave offer.
-  let view = getParam("view") === "paths" ? "paths" : "bars";
-  const panelQuestions = new Set(CONFIG.panel_questions || []);
+  // ?view=trend deep-links the view of change over time, which only
+  // questions asked in more than one wave offer.
+  let view = getParam("view") === "trend" ? "trend" : "bars";
+  const trendQuestions = new Set(CONFIG.trend_questions || []);
   let currentArm = getParam("arm");      // ?arm= deep-links a split-sample version
   let scheme = urlScheme();              // ?scheme= deep-links a color scheme
   let currentQuestionText = "";          // for the flag list
@@ -1060,12 +982,7 @@ components.explore = async function (page, container) {
   const chartCard = el("div", { class: "card wx-result-chart" });
   const wrap = el("div", { class: "chart-wrap" });
   const canvas = el("canvas");
-  // The paths are drawn by hand rather than by Chart.js, on a canvas of
-  // their own, so switching views never hands one library's canvas to the
-  // other.
-  const pathsCanvas = el("canvas", { class: "s3-paths-canvas", role: "img" });
-  pathsCanvas.style.display = "none";
-  wrap.append(canvas, pathsCanvas);
+  wrap.append(canvas);
 
   // Chrome created up front so draw() can update it.
   // The stem a battery of items shares, above the item itself. Quieter,
@@ -1247,8 +1164,6 @@ components.explore = async function (page, container) {
   const ciBox = el("input", { type: "checkbox", id: "ci-toggle" });
   ciBox.checked = showCI;
   ciBox.onchange = () => { showCI = ciBox.checked; setParams({ ci: showCI ? "1" : null }); draw(); };
-  const ciLabel = el("label", { class: "wx-ci-label", for: "ci-toggle" },
-    ciBox, " Show 95% confidence intervals");
   const headRow = el("div", { class: "wx-question-headrow" }, qHead);
   if (flagBtn) headRow.append(flagBtn);
   resultHead.append(qSurvey, qShown, qIntro, headRow, armBox);
@@ -1287,7 +1202,6 @@ components.explore = async function (page, container) {
    * caption's facts line and bars sentence. */
   function chartImage() {
     if (!lastChart) return null;
-    if (lastChart.paths) return pathsImage();
     const inner = FIGURE.W - FIGURE.pad * 2;
     // The chart keeps the proportions it has on screen.
     const ratio = wrap.clientHeight / Math.max(1, wrap.clientWidth);
@@ -1302,7 +1216,8 @@ components.explore = async function (page, container) {
     Chart.defaults.font.size = 15;   // slide-sized type, not screen-sized
     let chart;
     try {
-      chart = groupedBarChart(cv, lastChart.rows,
+      // The same drawing the page shows, bars or lines.
+      chart = (lastChart.trend ? trendChart : groupedBarChart)(cv, lastChart.rows,
         { ...lastChart.opts, standalone: true, pixelRatio: FIGURE.S, labelSize: 14 });
     } finally { Chart.defaults.font.size = saved; }
     const capLine = (cls) => (caption.querySelector(cls) || {}).textContent || "";
@@ -1320,119 +1235,81 @@ components.explore = async function (page, container) {
 
   const exportName = (ext) => {
     const g = lastChart && lastChart.g;
-    if (lastChart && lastChart.paths)
-      return `s3ok-${currentKey}-paths${g !== "All" ? "-" + g : ""}.${ext}`;
-    return `s3ok-${currentKey}${g && g !== "All" ? "-" + g : ""}.${ext}`;
+    return `s3ok-${currentKey}${lastChart && lastChart.trend ? "-trend" : ""}` +
+      `${g && g !== "All" ? "-" + g : ""}.${ext}`;
   };
 
-  /* Each respondent across waves, for a question asked in more than one. The
-   * same drawing serves the page and the download. */
-  const pathsHeight = (v, keyed) => Math.max(420, Math.min(760,
-    90 + (v.options || []).length * 86)) + (keyed ? 34 : 0);
-  function paintPaths() {
-    if (!lastChart || !lastChart.paths) return;
-    const box = wrap.getBoundingClientRect();
-    if (!box.width) return;
-    const ratio = window.devicePixelRatio || 1;
-    pathsCanvas.style.width = box.width + "px";
-    pathsCanvas.style.height = box.height + "px";
-    pathsCanvas.width = Math.round(box.width * ratio);
-    pathsCanvas.height = Math.round(box.height * ratio);
-    const ctx = pathsCanvas.getContext("2d");
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx.clearRect(0, 0, box.width, box.height);
-    drawPanelPaths(ctx, 0, 0, box.width, box.height, lastChart.panel,
-      lastChart.options, panelPathTheme(12, 1), lastChart.series);
-  }
-  new ResizeObserver(() => paintPaths()).observe(wrap);
-
-  // The scheme's colors, as the bars take them, except on the dark theme.
-  // A ramp starts at its darkest color, which fills a bar well enough on a
-  // dark card and loses a hairline at low opacity entirely, so there the
-  // ramp is read from its light end.
-  function pathColors(n) {
+  /* Change over time, for a question asked in more than one wave: the
+   * average answer, the percentage answering yes, or the percentage giving
+   * each answer, in each wave, on the balanced sample 02 kept. One line per
+   * group under a comparison; a question with unordered answers has a line
+   * per answer and takes no comparison. */
+  // The scheme's colors, as the bars take them, except on the dark theme: a
+  // ramp starts at its darkest color, which fills a bar well enough on a dark
+  // card and loses a line, so there the ramp is read from its light end.
+  function lineColors(n) {
     if (document.documentElement.dataset.theme !== "dark")
       return schemeSeriesColors(scheme, n);
     return schemeSeriesColors(scheme, Math.max(2, n)).reverse().slice(0, n);
   }
 
-  async function drawPaths(v) {
-    const panel = await fetchJSON(`data/panel/${v.id}.json`);
+  async function drawTrend(v) {
+    const t = await fetchJSON(`data/trend/${v.id}.json`);
     const tpl = CONFIG.explore_caption;
-    // The comparison colors the lines. A wave cannot: every line crosses all
-    // of them. So that choice, like a split the question was not asked
-    // under, falls back to Everyone, and the menu shows it doing so.
-    const at = panel.splits.indexOf(grouping);
-    const shown = at >= 0 ? Object.keys(panel.group_n[grouping] || {}) : [];
-    const g = shown.length ? grouping : "All";
+    // The comparison falls back to Everyone where this question does not
+    // offer it (unordered answers, or a split with no group large enough),
+    // and the menu shows it doing so.
+    const g = t.splits[grouping] ? grouping : "All";
     if (groupingSel) groupingSel.value = g;
     const gcfg = CONFIG.groupings.find(x => x.id === g) || {};
-    // Groups in the split's own order, colored as the bars would be.
-    const groups = g === "All" ? ["All"]
-      : (gcfg.levels || []).filter(l => shown.includes(l));
-    const series = {
-      groups, title: g === "All" ? "" : gcfg.label,
-      colors: pathColors(groups.length),
-      // 02 computes the averages, per group, on the same balanced sample.
-      means: panel.means ? panel.means[g] : null,
-      of: g === "All" ? () => 0 : (p) => {
-        const lv = p.g[at];
-        return lv == null ? -1 : groups.indexOf(gcfg.levels[lv]);
-      }
+    const s = t.summaries[g];
+    const byOption = t.kind === "options";
+    const fmt = (x) => t.kind === "mean" ? Number(x).toFixed(2) : Math.round(x) + "%";
+    const rows = t.splits[g].map(r => ({
+      series: byOption ? r.option : r.group, wave: r.wave,
+      value: r.value, label: fmt(r.value), low: r.low, upp: r.upp
+    }));
+    // Series in their own order: the split's groups, or the answers as the
+    // instrument lists them.
+    const order = byOption ? (v.options || []).map(o => o.label) : (gcfg.levels || ["All"]);
+    rows.sort((a, b) => order.indexOf(a.series) - order.indexOf(b.series));
+    const nSeries = new Set(rows.map(r => r.series)).size;
+    wrap.style.height = "440px";
+    const chartOpts = {
+      yLabel: t.value_label,
+      yTicks: t.kind === "mean" ? (v.options || []).map(o => wrapTickLabel(o.label, 18, 2)) : null,
+      yMax: t.kind === "mean" ? null : 100,
+      showCI, ciDigits: t.kind === "mean" ? 2 : 1,
+      legend: nSeries > 1,
+      legendTitle: byOption ? "Answer" : (gcfg.label || "Group"),
+      colors: lineColors(nSeries),
+      altTitle: shownQuestion, waveNames: CONFIG.wave_names || {}
     };
-    const counts = g === "All" ? { All: panel.n } : panel.group_n[g];
-    const n = groups.reduce((sum, name) => sum + counts[name], 0);
-
-    wrap.style.height = pathsHeight(v, groups.length > 1) + "px";
-    lastChart = { paths: true, panel, series, g, options: v.options || [],
+    trendChart(canvas, rows, chartOpts);
+    lastChart = { trend: true, rows, opts: chartOpts, g,
                   survey: qSurvey.textContent, stem: shownStem, item: shownItem };
     lastCodeArgs = [currentKey, g, null];
-    paintPaths();
-    const samePct = Math.round(100 * panel.same_n / panel.n);
-    pathsCanvas.setAttribute("aria-label",
-      `Line chart. ${shownQuestion} One line for each of ` +
-      `${Number(n).toLocaleString()} respondents across ` +
-      `${panel.waves.length} waves` +
-      (g === "All" ? "" : `, colored by ${String(gcfg.label).toLowerCase()}`) +
-      `. ${samePct}% gave the same answer in every wave.`);
 
-    let note = fillTpl(tpl.paths, { same_pct: samePct });
-    if (series.means) note += g === "All" ? tpl.paths_mean : tpl.paths_mean_split;
+    let note = tpl["trend_" + t.kind];
     if (g !== "All") {
-      const smallest = groups.reduce((a, b) => counts[a] <= counts[b] ? a : b);
-      note += fillTpl(tpl.paths_split, { group_phrase: gcfg.phrase || "group" }) +
-        fillTpl(tpl.paths_smallest, { smallest,
-          smallest_n: Number(counts[smallest]).toLocaleString() });
-      const hidden = panel.not_shown[g] || [];
-      if (hidden.length) note += fillTpl(tpl.paths_not_shown, {
+      note += fillTpl(tpl.trend_split, { group_phrase: gcfg.phrase || "group" }) +
+        fillTpl(tpl.trend_smallest, { smallest: s.smallest,
+          smallest_n: Number(s.smallest_n).toLocaleString() });
+      if ((s.not_shown || []).length) note += fillTpl(tpl.trend_not_shown, {
         min: CONFIG.min_group_n,
-        groups: hidden.map(x => `${x.group} (${x.n})`).join(", ") });
+        groups: s.not_shown.map(x => `${x.group} (${x.n})`).join(", ") });
     }
+    if (showCI) note += t.kind === "mean" ? CONFIG.topic_caption.ci_mean
+                                           : CONFIG.topic_caption.ci_share;
     caption.textContent = "";
     caption.append(
-      el("p", { class: "wx-caption-meta" }, fillTpl(tpl.paths_meta, {
-        n: Number(n).toLocaleString(), k: panel.waves.length,
-        waves: panel.asked, years: dashed(panel.years) })),
+      el("p", { class: "wx-caption-meta" }, fillTpl(tpl.trend_meta, {
+        n: Number(s.n).toLocaleString(), k: t.waves.length,
+        waves: t.asked, years: dashed(t.years) })),
       el("p", { class: "wx-caption-bars" }, note),
       el("p", { class: "wx-caption-provenance", html: tpl.provenance }),
       el("p", { class: "wx-caption-ref", html: fillTpl(tpl.reference, {
         variable: esc(v.variable), randomization: "" }) }));
-  }
-
-  function pathsImage() {
-    const inner = FIGURE.W - FIGURE.pad * 2;
-    const height = Math.round(pathsHeight({ options: lastChart.options },
-      lastChart.series.groups.length > 1) * 1.15);
-    const capLine = (cls) => (caption.querySelector(cls) || {}).textContent || "";
-    return figureImage({
-      label: lastChart.survey, stem: lastChart.stem, title: lastChart.item,
-      body: { height, draw: (ctx, x, y, w) => drawPanelPaths(ctx, x, y, w, height,
-        lastChart.panel, lastChart.options, panelPathTheme(15, 1.1),
-        lastChart.series) },
-      lines: [{ text: capLine(".wx-caption-meta"), strong: true },
-              { text: capLine(".wx-caption-bars") }],
-      source: FIGURE_SOURCE + " Results are unweighted."
-    });
   }
 
   /* The scripts live in their own file, fetched the first time a reader asks
@@ -1442,10 +1319,10 @@ components.explore = async function (page, container) {
    * nothing. */
   const rcodeCache = new Map();
 
-  async function rcodeFor(id, g, armKey, paths = false) {
-    // The view of each respondent across waves has scripts of its own, one
-    // per coloring, in a file beside the bars'.
-    if (paths) return (await fetchJSON(`data/panel_rcode/${id}.json`))[g] || "";
+  async function rcodeFor(id, g, armKey, trend = false) {
+    // The view of change over time has scripts of its own, one per
+    // comparison, in a file beside the bars'.
+    if (trend) return (await fetchJSON(`data/trend_rcode/${id}.json`))[g] || "";
     let all = rcodeCache.get(id);
     if (!all) {
       all = await fetchJSON(`data/rcode/${id}.json`);
@@ -1456,12 +1333,12 @@ components.explore = async function (page, container) {
     return (armKey ? (all[armKey] || {})[g] : all[g]) || "";
   }
 
-  function downloadRCode(text, id, g, armKey, paths = false) {
+  function downloadRCode(text, id, g, armKey, trend = false) {
     // A version id is the survey's own value ("your local area"), which does
     // not belong in a filename as written.
     const safe = (v) => String(v).replace(/[^A-Za-z0-9]+/g, "-")
                                  .replace(/^-|-$/g, "");
-    const name = paths ? `s3ok-${id}-paths-${g}.R`
+    const name = trend ? `s3ok-${id}-trend-${g}.R`
       : armKey ? `s3ok-${id}-${safe(armKey)}-${g}.R`
       : `s3ok-${id}-${g}.R`;
     const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
@@ -1580,22 +1457,12 @@ components.explore = async function (page, container) {
     lastCodeArgs = [currentKey, g, armKey];
     // The view menu shows only where there is a second view to offer, and a
     // question without one falls back to its bars.
-    const canPaths = panelQuestions.has(currentKey);
-    const paths = canPaths && view === "paths";
-    viewWrap.style.display = canPaths ? "" : "none";
-    viewSel.value = paths ? "paths" : "bars";
-    canvas.style.display = paths ? "none" : "";
-    pathsCanvas.style.display = paths ? "" : "none";
-    // Both views take the comparison and the color scheme. Intervals belong
-    // to the bars alone: a line is one person's answers, not an estimate.
-    ciLabel.style.display = paths ? "none" : "";
+    const canTrend = trendQuestions.has(currentKey);
+    const trend = canTrend && view === "trend";
+    viewWrap.style.display = canTrend ? "" : "none";
+    viewSel.value = trend ? "trend" : "bars";
     if (rcodeBtn) rcodeBtn.style.display = v.has_r_code ? "" : "none";
-    if (paths) {
-      if (activeChart) { activeChart.destroy(); activeChart = null; }
-      if (canvas._altTable) { canvas._altTable.remove(); canvas._altTable = null; }
-      await drawPaths(v);
-      return;
-    }
+    if (trend) { await drawTrend(v); return; }
     const tick = tickLabeller((v.options || []).map(o => o.label));
     const rows = (splits[g] || []).map(r => ({
       group: r.group, category: tick(labelFor(r.resp)),
@@ -1676,11 +1543,11 @@ components.explore = async function (page, container) {
   // in more than one wave; draw() shows and hides it.
   const viewSel = el("select", { class: "grouping", id: "view-sel", onchange: () => {
     view = viewSel.value;
-    setParams({ view: view === "paths" ? "paths" : null }, true);
+    setParams({ view: view === "trend" ? "trend" : null }, true);
     draw();
   } });
   viewSel.append(el("option", { value: "bars" }, "Distribution of responses"),
-                 el("option", { value: "paths" }, "Each respondent across waves"));
+                 el("option", { value: "trend" }, "Change over time"));
   const viewWrap = el("div", { class: "wx-compare" },
     el("label", { class: "field-label", for: "view-sel" }, "Show"), viewSel);
   viewWrap.style.display = "none";
@@ -1694,7 +1561,8 @@ components.explore = async function (page, container) {
       setParams({ scheme: sc === DEFAULT_SCHEME ? null : sc });
       draw();
     }),
-    ciLabel));
+    el("label", { class: "wx-ci-label", for: "ci-toggle" },
+      ciBox, " Show 95% confidence intervals")));
   bar.append(options);
   // The caption below the chart is the document's notes: how many answered,
   // that the percentages are weighted, which waves, the smallest group, and
@@ -1720,10 +1588,10 @@ components.explore = async function (page, container) {
   rcodeBtn = pdfButton("Download R code", async () => {
     if (!lastCodeArgs) return;
     const [id, g, armKey] = lastCodeArgs;
-    const paths = !!(lastChart && lastChart.paths);
+    const trend = !!(lastChart && lastChart.trend);
     try {
-      const text = await rcodeFor(id, g, armKey, paths);
-      if (text) downloadRCode(text, id, g, armKey, paths);
+      const text = await rcodeFor(id, g, armKey, trend);
+      if (text) downloadRCode(text, id, g, armKey, trend);
     } catch { /* a missing file leaves the chart alone rather than erroring */ }
   });
   // Hidden until draw() has a question in hand: it downloads that question's

@@ -56,7 +56,7 @@ if (!dir.exists(site_src)) {
 # Rebuilt from scratch each run: a question dropped upstream must not survive
 # here as a stale file.
 unlink(site_out, recursive = TRUE)
-for (d in c("data/q", "data/rcode", "data/panel", "data/panel_rcode",
+for (d in c("data/q", "data/rcode", "data/trend", "data/trend_rcode",
             "data/topics",
             "data/narratives",
             "data/map", "data/geo")) {
@@ -173,31 +173,31 @@ invisible(file.copy(r_files, paste0(site_out, "data/rcode/")))
 message("Questions carried over: ", length(q_files),
         ", with reproduction scripts for each")
 
-# Each respondent's answers across waves, for the questions asked in more than
-# one. The index is what tells the page which questions offer that view, so a
-# file without an entry, or an entry without a file, stops the build.
-panel_files <- list.files(paste0(dashboard_data, "panel"), full.names = TRUE)
-panel_ids <- unlist(read_json(paste0(dashboard_data, "panel/index.json")))
+# Change over time, for the questions asked in more than one wave. The index
+# is what tells the page which questions offer that view, so a file without
+# an entry, or an entry without a file, stops the build.
+trend_files <- list.files(paste0(dashboard_data, "trend"), full.names = TRUE)
+trend_ids <- unlist(read_json(paste0(dashboard_data, "trend/index.json")))
 
-if (!setequal(paste0(panel_ids, ".json"),
-              setdiff(basename(panel_files), "index.json"))) {
-  stop("The panel index and the panel files in ", dashboard_data,
+if (!setequal(paste0(trend_ids, ".json"),
+              setdiff(basename(trend_files), "index.json"))) {
+  stop("The trend index and the trend files in ", dashboard_data,
        " do not list the same questions.")
 }
 
-invisible(file.copy(setdiff(panel_files,
-                            paste0(dashboard_data, "panel/index.json")),
-                    paste0(site_out, "data/panel/")))
+invisible(file.copy(setdiff(trend_files,
+                            paste0(dashboard_data, "trend/index.json")),
+                    paste0(site_out, "data/trend/")))
 
-panel_r_files <- list.files(paste0(dashboard_data, "panel_rcode"),
+trend_r_files <- list.files(paste0(dashboard_data, "trend_rcode"),
                             full.names = TRUE)
 
-if (!setequal(basename(panel_r_files), paste0(panel_ids, ".json"))) {
-  stop("Not every question with respondent paths has the R that rebuilds ",
-       "them - Download R code would 404.")
+if (!setequal(basename(trend_r_files), paste0(trend_ids, ".json"))) {
+  stop("Not every question with a trend has the R that rebuilds it - ",
+       "Download R code would 404.")
 }
 
-invisible(file.copy(panel_r_files, paste0(site_out, "data/panel_rcode/")))
+invisible(file.copy(trend_r_files, paste0(site_out, "data/trend_rcode/")))
 
 # Respondents ------------------------------------------------------------------
 respondents <- read_json(paste0(dashboard_data, "respondents.json"),
@@ -759,9 +759,9 @@ config <- list(
   waves = map2(waves_data$wave, waves_data$menu_name,
                function(wave, name) list(wave = wave, name = name)),
   min_group_n = min_n,
-  # Questions asked in more than one wave, which offer the view of each
-  # respondent across waves. Hidden questions are not listed, so are left out.
-  panel_questions = as.list(setdiff(panel_ids, drop_ids)),
+  # Questions asked in more than one wave, which offer the view of change
+  # over time. Hidden questions are not listed, so are left out.
+  trend_questions = as.list(setdiff(trend_ids, drop_ids)),
   wave_names = as.list(setNames(waves_data$fielded_short, waves_data$wave)),
   # The note under each chart, in four parts: who and when as one line of
   # facts, what the bars are, where the data come from, and the handles a
@@ -773,28 +773,37 @@ config <- list(
     # panelists answer wave after wave.
     meta_pooled = paste0("{n} responses from {people} Oklahoma adults ",
                          "· {waves} · {years}"),
-    # The view of each respondent across waves, on a balanced sample.
-    paths_meta = paste0("{n} Oklahoma adults who answered in all {k} waves ",
+    # The view of change over time, on a balanced sample. One sentence per
+    # kind of estimate, then the comparison's.
+    trend_meta = paste0("{n} Oklahoma adults who answered in all {k} waves ",
                         "\u00b7 {waves} \u00b7 {years}"),
-    paths = paste0("Each line is one respondent, followed across the waves ",
-                   "that asked this question. Lines are spread a little ",
-                   "within each answer so that people who answered alike do ",
-                   "not hide one another. Only respondents who answered in ",
-                   "every one of those waves are shown, so this is a smaller ",
-                   "group than the bar chart describes. {same_pct}% of them ",
-                   "gave the same answer in every wave."),
+    trend_mean = paste0("The line shows the average answer in each wave, on ",
+                        "the scale of the response options. Only ",
+                        "respondents who answered this question in every one ",
+                        "of these waves are counted, so a change is a change ",
+                        "in answers rather than in who took part; this is a ",
+                        "smaller group than the bar chart describes."),
+    trend_share = paste0("The line shows the percentage answering yes in ",
+                         "each wave. Only respondents who answered this ",
+                         "question in every one of these waves are counted, ",
+                         "so a change is a change in answers rather than in ",
+                         "who took part; this is a smaller group than the ",
+                         "bar chart describes."),
+    trend_options = paste0("Each line is one answer: the percentage giving ",
+                           "it in each wave. Only respondents who answered ",
+                           "this question in every one of these waves are ",
+                           "counted, so a change is a change in answers ",
+                           "rather than in who took part; this is a smaller ",
+                           "group than the bar chart describes. The answers ",
+                           "have no order, so there is one line per answer ",
+                           "and no comparison by group."),
     # A person's group can change between waves, so the caption says which
-    # wave's group colors the line.
-    paths_split = paste0(" Lines are colored by {group_phrase}, as it was ",
+    # wave's group a line follows.
+    trend_split = paste0(" There is one line per {group_phrase}, as it was ",
                          "in the first of these waves."),
-    # Said only where the options are ordered and an average is drawn.
-    paths_mean = paste0(" The heavy line is their average answer in each ",
-                        "wave."),
-    paths_mean_split = paste0(" The heavy lines are each group\u2019s ",
-                              "average answer in each wave."),
-    paths_smallest = paste0(" The smallest group, {smallest}, includes ",
+    trend_smallest = paste0(" The smallest group, {smallest}, includes ",
                             "{smallest_n} respondents."),
-    paths_not_shown = paste0(" Groups with fewer than {min} respondents are ",
+    trend_not_shown = paste0(" Groups with fewer than {min} respondents are ",
                              "not shown: {groups}."),
     bars = "Bars show the percentage selecting each response.",
     bars_split = paste0("Bars show the percentage of each {group_phrase} ",

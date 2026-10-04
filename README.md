@@ -86,7 +86,7 @@ questions in `variable_reference.csv`, and a level in the `WAVE` split
 | page | what it shows |
 |---|---|
 | Home | what the project is, an animated map of the panel, four counted figures |
-| Explore Survey Questions | search, one question at a time under 14 splits, question browser, R code for each chart; for a question asked in several waves, a line per respondent across them |
+| Explore Survey Questions | search, one question at a time under 14 splits, question browser, R code for each chart; for a question asked in several waves, its change over time |
 | Explore Key Topics | a whole battery on one chart: priorities, risk, experience, future risk, trust |
 | Explore Regions | the same measures for the five regions, approximate respondent locations, a region overview sheet |
 | Policy Narratives | Wave 1's open-ended answers, searchable |
@@ -104,12 +104,12 @@ questions in `variable_reference.csv`, and a level in the `WAVE` split
 - **Gender.** Respondents whose gender is neither female nor male are too few
   to chart as a group; they are left out of the Gender split only.
 - **Top priority is per response:** the item ranked first in that wave.
-- **Each respondent across waves** is drawn on a balanced sample: only
-  respondents who answered the question in every wave that asked it. The
-  site is sent distinct answer sequences with counts, never a row per
-  person. Where a question's options are ordered (`scale_order` in the
-  variable reference), each group's average answer per wave is drawn over
-  the lines.
+- **Change over time** is estimated on a balanced sample: only respondents
+  who answered the question in every wave that asked it, so a change is a
+  change in answers rather than in who took part. What is drawn depends on
+  the options (`scale_order` in the variable reference): the average answer
+  for an ordered scale, the percentage answering yes for a yes/no question,
+  and the percentage giving each answer for unordered options.
 - **Small groups.** A group with fewer than 20 responses on a question is not
   charted, and the caption names it.
 - **Split-sample questions** (`rand_temp`, `rand_loc_vis`) are estimated one

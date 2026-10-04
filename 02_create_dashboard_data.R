@@ -19,9 +19,9 @@ source(here::here("helpers", "rcode.R"))
 #   questions.json   the question index the explorer's search and browser read
 #   q/               one file per question: the distribution under every split
 #   rcode/           one file per question: the R that rebuilds each chart
-#   panel/           for a question asked in several waves: each respondent's
-#                    answers across them
-#   panel_rcode/     the R that rebuilds each of those charts
+#   trend/           for a question asked in several waves: each wave's answer
+#                    on the balanced sample
+#   trend_rcode/     the R that rebuilds each of those charts
 #   topics/          the five key-topic batteries, under every split
 #   narratives/      Wave 1's open-ended answers on water, land, infrastructure
 #   regions.geojson  the five survey regions
@@ -40,7 +40,7 @@ source(here::here("helpers", "rcode.R"))
 # their charts.
 
 unlink(dashboard_data, recursive = TRUE)
-for (d in c("q", "rcode", "panel", "panel_rcode", "topics", "narratives")) {
+for (d in c("q", "rcode", "trend", "trend_rcode", "topics", "narratives")) {
   dir.create(paste0(dashboard_data, d), recursive = TRUE, showWarnings = FALSE)
 }
 
@@ -533,39 +533,36 @@ wjson(question_index, "questions.json")
 message("Questions written: ", length(question_index), "; ", verified,
         " generated scripts run and matched to their charts")
 
-# Panel Paths ------------------------------------------------------------------
-# For a question asked in more than one wave, the answers each respondent gave
-# across those waves, so the page can draw a line per person. The sample is
-# balanced first: only respondents who answered the question in every wave
-# that asked it are kept, so every line runs the full width and a change in
-# the picture is a change in answers rather than in who took part.
+# Change Over Time -------------------------------------------------------------
+# For a question asked in more than one wave, each wave's answer on a balanced
+# sample: only respondents who answered the question in every wave that asked
+# it are kept, so a change is a change in answers rather than in who took
+# part. What is estimated depends on the options:
 #
-# The lines can be colored by any split but the wave. A person's group can
-# change from wave to wave (age, party), so each keeps the group they were in
-# at the first wave that asked the question. A group with too few respondents
-# to chart is left out of that split, as it is under the bars.
+#   mean     ordered options: the average answer, as a position among the
+#            options (1 for the first), where the page labels the axis
+#   share    yes/no options: the percentage answering yes
+#   options  unordered options: the percentage giving each answer
 #
-# Where the options are ordered, the average answer in each wave is computed
-# for every group, on the same balanced sample, as a position among the
-# options (1 for the first), which is where the page draws it.
-#
-# Rows are distinct combinations of an answer sequence and groups, with the
-# number of people who share each, and carry no identifier. Every column here
-# is in the public wave files beside p_id, so nothing is released that those
-# files do not already hold.
-panel_splits <- setdiff(split_columns, "WAVE")
-panel_ids <- character(0)
-panel_verified <- 0L
+# A mean or share is estimated under every split but the wave. A person's
+# group can change from wave to wave (age, party), so each keeps the group
+# they were in at the first wave that asked the question, and a group with
+# too few respondents to chart is left out of that split, as under the bars.
+# A question with unordered options is estimated for everyone only: a line
+# per answer per group would not be readable.
+trend_splits <- setdiff(split_columns, "WAVE")
+trend_ids <- character(0)
+trend_verified <- 0L
 
 for (i in seq_len(nrow(reference_data))) {
   q <- reference_data[i, ]
-  # A split-sample question was asked in one wave, and a path across versions
-  # would not be a path across time.
+  # A split-sample question was asked in one wave, and a change across
+  # versions would not be a change across time.
   if (!is.na(arm_of[q$variable])) next
 
   answers_data <- responses_data |>
     select(p_id, wave, end_date, resp = all_of(q$variable),
-           all_of(panel_splits)) |>
+           all_of(trend_splits)) |>
     mutate(resp = if_else(resp %in% missing_codes, NA_character_, resp)) |>
     drop_na(resp)
   wave_numbers <- sort(unique(answers_data$wave))
@@ -582,91 +579,118 @@ for (i in seq_len(nrow(reference_data))) {
          "respondent per wave.")
   }
 
-  # One row per person: their path, and their groups at the first wave.
-  person_data <- balanced_data |>
-    summarize(
-      path = paste(resp, collapse = ","),
-      same = n_distinct(resp) == 1,
-      across(all_of(panel_splits), first),
-      .by = p_id
-    )
+  options_data <- q$options[[1]]
+  kind <- if (setequal(options_data$value, c("0", "1"))) "share" else
+    if (q$scale_order == "ordered") "mean" else "options"
+  yes_label <- options_data$label[options_data$value == "1"]
 
-  group_n <- list()
-  not_shown <- list()
+  # Each person's groups at the first of these waves.
+  group_data <- balanced_data |>
+    filter(wave == wave_numbers[1]) |>
+    select(p_id, all_of(trend_splits))
 
-  for (s in panel_splits) {
-    counts <- table(factor(person_data[[s]], levels = split_levels[[s]]))
-    counts <- counts[counts > 0]
-    small <- counts[counts < min_group_n]
-    person_data[[s]][person_data[[s]] %in% names(small)] <- NA
-    shown <- counts[counts >= min_group_n]
-    group_n[[s]] <- as.list(setNames(as.integer(shown), names(shown)))
-    not_shown[[s]] <- unname(map2(names(small), as.integer(small),
-                                  function(g, n) list(group = g, n = n)))
-  }
-
-  paths_data <- person_data |>
-    count(path, across(all_of(panel_splits)))
-  option_values <- q$options[[1]]$value
-  ordered_scale <- q$scale_order == "ordered"
-
-  # Each group's average position in each wave, with every person counted
-  # under the group their line is drawn in.
-  wave_means <- function(g) {
+  # The rows for one split: the estimate per wave per group (or per answer).
+  trend_rows <- function(g) {
     grouped_data <- balanced_data |>
       select(p_id, wave, resp) |>
       inner_join(
-        person_data |>
+        group_data |>
           transmute(p_id, group = if (g == "All") "All" else .data[[g]]) |>
           drop_na(group),
         by = "p_id"
-      ) |>
-      summarize(mean = round(mean(match(resp, option_values)), 3),
-                .by = c(group, wave)) |>
-      arrange(group, wave)
-    map(split(grouped_data$mean, grouped_data$group), as.list)
-  }
-  means <- if (ordered_scale) {
-    map(setNames(c("All", panel_splits), c("All", panel_splits)), wave_means)
+      )
+    counts <- grouped_data |>
+      distinct(p_id, group) |>
+      count(group) |>
+      arrange(match(group, if (g == "All") "All" else split_levels[[g]]))
+    small_data <- counts |> filter(n < min_group_n)
+    shown_data <- grouped_data |> filter(!group %in% small_data$group)
+    if (nrow(shown_data) == 0) return(NULL)
+
+    design <- shown_data |> as_survey_design(ids = p_id)
+    est_data <- suppressWarnings(
+      if (kind == "options") {
+        design |>
+          group_by(wave, resp) |>
+          summarize(v = survey_prop(proportion = TRUE, vartype = "ci"),
+                    .groups = "drop") |>
+          mutate(across(c(v, v_low, v_upp), ~ 100 * .x), group = "All") |>
+          arrange(match(resp, options_data$value), wave) |>
+          transmute(
+            group,
+            option = options_data$label[match(resp, options_data$value)],
+            wave, value = v, low = v_low, upp = v_upp
+          )
+      } else if (kind == "share") {
+        design |>
+          group_by(group, wave) |>
+          summarize(v = survey_mean(resp == "1", vartype = "ci"),
+                    .groups = "drop") |>
+          mutate(across(c(v, v_low, v_upp), ~ 100 * .x)) |>
+          transmute(group, wave, value = v, low = v_low, upp = v_upp)
+      } else {
+        design |>
+          group_by(group, wave) |>
+          summarize(v = survey_mean(match(resp, options_data$value),
+                                    vartype = "ci"),
+                    .groups = "drop") |>
+          transmute(group, wave, value = v, low = v_low, upp = v_upp)
+      }
+    ) |>
+      mutate(across(c(value, low, upp), ~ round(.x, 3))) |>
+      arrange(match(group, counts$group), wave)
+
+    shown_counts <- counts |> filter(n >= min_group_n)
+    list(
+      rows = est_data,
+      summary = list(
+        n = sum(shown_counts$n),
+        n_waves = length(wave_numbers),
+        waves = number_runs(wave_numbers),
+        years = number_runs(format(balanced_data$end_date, "%Y")),
+        smallest = shown_counts$group[which.min(shown_counts$n)],
+        smallest_n = min(shown_counts$n),
+        group_n = as.list(setNames(shown_counts$n, shown_counts$group)),
+        not_shown = unname(map2(small_data$group, small_data$n,
+                                function(g, n) list(group = g, n = n)))
+      )
+    )
   }
 
-  # The script behind each coloring, and a check that two of them (Everyone
-  # and one rotating split) rebuild the paths being published.
-  scripts <- map(setNames(c("All", panel_splits), c("All", panel_splits)),
-                 function(g) {
-    r_paths_script(
+  offered <- if (kind == "options") "All" else c("All", trend_splits)
+  by_split <- compact(map(setNames(offered, offered), trend_rows))
+
+  scripts <- map(setNames(names(by_split), names(by_split)), function(g) {
+    r_trend_script(
       question = readable_wording(q$question),
       variable = q$variable,
       wave_numbers = wave_numbers,
       wave_files = waves$file[match(wave_numbers, waves$wave)],
       split = if (g == "All") NULL else splits[[g]],
-      level_values = option_values,
-      level_labels = q$options[[1]]$label,
+      kind = kind,
+      level_values = options_data$value,
+      level_labels = options_data$label,
       missing_codes = if (any(responses_data[[q$variable]] %in%
                               missing_codes)) {
         missing_codes
       } else {
         character(0)
       },
-      min_group_n = min_group_n,
-      with_means = ordered_scale
+      min_group_n = min_group_n
     )
   })
-  rotating <- panel_splits[(i - 1) %% length(panel_splits) + 1]
 
-  for (g in c("All", rotating)) {
-    expect_data <- if (g == "All") {
-      paths_data |> transmute(group = "All", path, n)
-    } else {
-      paths_data |>
-        transmute(group = .data[[g]], path, n) |>
-        drop_na(group)
-    }
-    if (nrow(expect_data) == 0) next
-    verify_r_paths(scripts[[g]], expect_data, option_values,
-                   paste(q$variable, "paths", g),
-                   expect_means = if (ordered_scale) means[[g]])
-    panel_verified <- panel_verified + 1L
+  # Two scripts run and compared with what is being published: Everyone and
+  # one rotating split.
+  rotating <- trend_splits[(i - 1) %% length(trend_splits) + 1]
+  for (g in intersect(c("All", rotating), names(by_split))) {
+    rows <- by_split[[g]]$rows
+    expect_data <- rows |>
+      transmute(series = if (kind == "options") option else group,
+                wave, value, low)
+    verify_r_trend(scripts[[g]], expect_data,
+                   paste(q$variable, "trend", g))
+    trend_verified <- trend_verified + 1L
   }
 
   wjson(
@@ -675,37 +699,24 @@ for (i in seq_len(nrow(reference_data))) {
       waves = as.list(wave_numbers),
       asked = wave_runs_label(wave_numbers),
       years = number_runs(format(balanced_data$end_date, "%Y")),
-      n = n_balanced,
-      # How many gave one answer throughout, for the caption.
-      same_n = sum(person_data$same),
-      splits = as.list(panel_splits),
-      # Null where the options have no order to average over.
-      means = means,
-      group_n = group_n,
-      not_shown = not_shown,
-      # `g` is each split's group as a position in that split's levels,
-      # counted from zero, in the order of `splits`; null where the person
-      # is in no charted group.
-      paths = pmap(paths_data, function(path, n, ...) {
-        groups <- list(...)
-        list(
-          path = path, n = n,
-          g = unname(map(panel_splits, function(s) {
-            match(groups[[s]], split_levels[[s]]) - 1L
-          }))
-        )
-      })
+      kind = kind,
+      value_label = switch(kind,
+        mean = "Average answer",
+        share = paste0("Answering ", str_to_lower(yes_label), " (%)"),
+        options = "Share of respondents (%)"),
+      splits = map(by_split, "rows"),
+      summaries = map(by_split, "summary")
     ),
-    paste0("panel/", q$variable, ".json")
+    paste0("trend/", q$variable, ".json")
   )
-  wjson(scripts, paste0("panel_rcode/", q$variable, ".json"))
-  panel_ids <- c(panel_ids, q$variable)
+  wjson(scripts, paste0("trend_rcode/", q$variable, ".json"))
+  trend_ids <- c(trend_ids, q$variable)
 }
 
-wjson(as.list(panel_ids), "panel/index.json")
-message("Panel paths written: ", length(panel_ids), " questions asked in ",
-        "more than one wave; ", panel_verified, " generated scripts run and ",
-        "matched")
+wjson(as.list(trend_ids), "trend/index.json")
+message("Change over time written: ", length(trend_ids), " questions asked ",
+        "in more than one wave; ", trend_verified, " generated scripts run ",
+        "and matched")
 
 # Key Topics -------------------------------------------------------------------
 # Five batteries shown whole: every item of a battery

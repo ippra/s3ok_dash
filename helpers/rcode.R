@@ -238,44 +238,22 @@ verify_r_code <- function(script, expect, options, label) {
   }
 }
 
-# Respondent Paths -------------------------------------------------------------
-# The script behind the view of each respondent across waves: the same three
-# rules as above, and the same steps 02 takes. Stack the waves, keep the
-# respondents who answered in every one (the balanced sample), give each the
-# group they were in at the first of those waves, and draw a line per person.
-r_paths_script <- function(question, variable, wave_numbers, wave_files, split,
-                           level_values, level_labels,
-                           missing_codes = character(0), min_group_n = 20,
-                           with_means = FALSE) {
+# Change Over Time -------------------------------------------------------------
+# The script behind the view of change over time: the same three rules as
+# above, and the same steps 02 takes. Stack the waves, keep the respondents
+# who answered in every one (the balanced sample), give each the group they
+# were in at the first of those waves, and estimate each wave: the average
+# answer (`mean`, as a position among the options), the percentage answering
+# yes (`share`), or the percentage giving each answer (`options`).
+r_trend_script <- function(question, variable, wave_numbers, wave_files, split,
+                           kind, level_values, level_labels,
+                           missing_codes = character(0), min_group_n = 20) {
   obj <- paste0("wave_", wave_numbers)
   grp <- if (is.null(split)) NULL else split$id
 
   resp_expr <- if (length(missing_codes) == 0) r_name(variable) else
     paste0("if_else(", r_name(variable), " %in% ", r_vec(missing_codes, 0),
            ", NA_character_, ", r_name(variable), ")")
-
-  # Where the options are ordered, the average answer in each wave, drawn
-  # over the lines: one heavy line, or one per group.
-  means <- if (!with_means) "" else paste0(
-    "# The average answer in each wave, as a position among the options.\n",
-    "means <- d |>\n",
-    "  summarise(\n",
-    "    mean = mean(as.integer(resp)),\n",
-    "    .by = ", if (is.null(grp)) "wave" else paste0("c(", grp, ", wave)"),
-    "\n",
-    "  )\n\n")
-  mean_layer <- if (!with_means) "" else paste0(
-    "  geom_line(\n",
-    "    data = means,\n",
-    "    aes(\n",
-    "      x = wave,\n",
-    "      y = mean",
-    if (is.null(grp)) "" else paste0(",\n      color = ", grp,
-                                     ",\n      group = ", grp),
-    "\n    ),\n",
-    "    inherit.aes = FALSE,\n",
-    "    linewidth = 1.2\n",
-    "  ) +\n")
 
   stack <- map2_chr(obj, wave_numbers, function(o, wave) {
     lines <- c("      p_id", paste0("      wave = ", wave))
@@ -311,47 +289,60 @@ r_paths_script <- function(question, variable, wave_numbers, wave_files, split,
     } else "",
     "\n  )\n")
 
-  by_columns <- paste(c("p_id", grp), collapse = ", ")
-  paths <- paste0(
-    "# The distinct sequences of answers and how many respondents gave each.\n",
-    "paths <- d |>\n",
-    "  arrange(p_id, wave) |>\n",
-    "  summarise(\n",
-    "    path = paste(as.integer(resp), collapse = \",\"),\n",
-    "    .by = c(", by_columns, ")\n",
-    "  ) |>\n",
-    "  count(", paste(c(grp, "path"), collapse = ", "), ")\n")
+  by <- paste(c(grp, "wave"), collapse = ", ")
+  est <- paste0(
+    "# Each wave on its own. The design clusters on the panelist for the\n",
+    "# same reason the bar chart's does; within one wave each person\n",
+    "# answers once.\n",
+    "est <- d |>\n",
+    "  as_survey_design(ids = p_id) |>\n",
+    if (kind == "options") paste0(
+      "  group_by(wave, resp) |>\n",
+      "  summarise(\n",
+      "    value = survey_prop(proportion = TRUE, vartype = \"ci\"),\n",
+      "    .groups = \"drop\"\n",
+      "  ) |>\n",
+      "  mutate(across(c(value, value_low, value_upp), ~ 100 * .x))\n"
+    ) else if (kind == "share") paste0(
+      "  group_by(", by, ") |>\n",
+      "  summarise(\n",
+      "    value = survey_mean(resp == ",
+      r_quote(level_labels[level_values == "1"]), ", vartype = \"ci\"),\n",
+      "    .groups = \"drop\"\n",
+      "  ) |>\n",
+      "  mutate(across(c(value, value_low, value_upp), ~ 100 * .x))\n"
+    ) else paste0(
+      "  group_by(", by, ") |>\n",
+      "  summarise(\n",
+      "    # The average answer as a position among the options, 1 for the\n",
+      "    # first.\n",
+      "    value = survey_mean(as.integer(resp), vartype = \"ci\"),\n",
+      "    .groups = \"drop\"\n",
+      "  )\n"
+    ))
 
-  color <- if (is.null(grp)) "" else paste0(",\n    color = ", grp)
+  color <- if (kind == "options") ", color = resp" else
+    if (is.null(grp)) "" else paste0(", color = ", grp)
   plot <- paste0(
-    "# Answers are categories, so each respondent's line is lifted or\n",
-    "# lowered a little within its answer, by the same amount at every\n",
-    "# wave, so that people who answered alike do not hide one another.\n",
-    "set.seed(1)\n",
-    "d <- d |>\n",
-    "  mutate(offset = runif(1, -0.35, 0.35), .by = p_id)\n\n",
-    "ggplot(\n",
-    "  d,\n",
-    "  aes(\n",
-    "    x = wave,\n",
-    "    y = as.integer(resp) + offset,\n",
-    "    group = p_id", color, "\n",
-    "  )\n",
-    ") +\n",
-    "  geom_line(alpha = 0.08, linewidth = 0.3) +\n",
-    mean_layer,
+    "ggplot(est, aes(x = wave, y = value", color, ")) +\n",
+    "  geom_line() +\n",
+    "  geom_point() +\n",
+    "  geom_errorbar(aes(ymin = value_low, ymax = value_upp), width = 0.2) +\n",
     "  scale_x_continuous(breaks = ", r_num_vec(wave_numbers), ") +\n",
-    "  scale_y_continuous(\n",
-    "    breaks = seq_along(levels(d$resp)),\n",
-    "    labels = levels(d$resp)\n",
-    "  ) +\n",
-    if (is.null(grp)) "" else paste0(
-      "  guides(color = guide_legend(override.aes = list(alpha = 1))) +\n"),
+    if (kind == "mean") paste0(
+      "  scale_y_continuous(\n",
+      "    breaks = seq_along(levels(d$resp)),\n",
+      "    labels = levels(d$resp),\n",
+      "    limits = c(1, nlevels(d$resp))\n",
+      "  ) +\n"
+    ) else "  scale_y_continuous(limits = c(0, 100)) +\n",
     "  labs(\n",
     "    title = str_wrap(", r_title(question), ", 70),\n",
     "    x = \"Survey wave\",\n",
-    "    y = NULL",
-    if (is.null(grp)) "" else paste0(",\n    color = ", r_quote(split$label)),
+    "    y = ", r_quote(c(mean = "Average answer", share = "Answering yes (%)",
+                         options = "Share of respondents (%)")[[kind]]),
+    if (kind == "options") ",\n    color = \"Answer\"" else
+      if (is.null(grp)) "" else paste0(",\n    color = ", r_quote(split$label)),
     "\n  ) +\n",
     "  theme_minimal()\n")
 
@@ -360,14 +351,15 @@ r_paths_script <- function(question, variable, wave_numbers, wave_files, split,
     "#\n",
     "# S3OK Public Survey, University of Oklahoma Institute for Public\n",
     "# Policy Research and Analysis. Rebuilds this chart from the public\n",
-    "# wave files and nothing else: a line for each respondent across\n",
+    "# wave files and nothing else: change over ",
     paste(strwrap(
       paste0("waves ", paste(wave_numbers, collapse = ", "), "."),
       76, prefix = "# "), collapse = "\n"), "\n",
     if (is.null(grp)) "" else
-      paste0("# Colored by ", str_to_lower(split$label), ".\n"),
+      paste0("# One line per ", str_to_lower(split$label), " group.\n"),
     "\n",
-    "library(tidyverse)\n\n",
+    "library(tidyverse)\n",
+    "library(srvyr)\n\n",
     "# Read as character: a column that is empty for its first thousand rows\n",
     "# is otherwise guessed logical, which turns every real value after it\n",
     "# into NA.\n",
@@ -376,20 +368,20 @@ r_paths_script <- function(question, variable, wave_numbers, wave_files, split,
            collapse = "\n"), "\n\n",
     "d <- bind_rows(\n", paste(stack, collapse = ",\n"), "\n) |>\n",
     "  filter(!is.na(resp)) |>\n",
-    "  # The balanced sample: only respondents who answered in every wave.\n",
+    "  # The balanced sample: only respondents who answered in every wave,\n",
+    "  # so a change is a change in answers, not in who took part.\n",
     "  filter(n() == ", length(wave_numbers), ", .by = p_id)", grouping,
     "\n\n",
-    factor_block, "\n", paths, "\n", means, plot)
+    factor_block, "\n", est, "\n", plot)
 }
 
-# c(1, 2, 3) wrapped to fit, for wave numbers.
+# c(1, 2, 3) on one line, for wave numbers.
 r_num_vec <- function(x) paste0("c(", paste(x, collapse = ", "), ")")
 
-# `expect` is what is being published for this split: group, path (response
-# codes), n. The script's paths are positions in the option list, so the
-# published codes are put on the same footing before the two are compared.
-verify_r_paths <- function(script, expect, level_values, label,
-                           expect_means = NULL) {
+# `expect` is what is being published for this split: group (or option
+# label), wave, value, low. The script labels its options, so an `options`
+# expectation carries labels too.
+verify_r_trend <- function(script, expect, label) {
   e <- new.env(parent = globalenv())
   assign("read_csv", cached_read_csv, envir = e)
   ok <- try(suppressWarnings(suppressMessages(
@@ -401,52 +393,28 @@ verify_r_paths <- function(script, expect, level_values, label,
          conditionMessage(attr(ok, "condition")))
   }
 
-  got <- get("paths", envir = e) |> as_tibble()
-  gcol <- setdiff(names(got), c("path", "n"))
+  got <- get("est", envir = e) |> as_tibble()
+  scol <- setdiff(names(got), c("wave", "value", "value_low", "value_upp",
+                                "value_se"))
   got <- got |>
     transmute(
-      group = if (length(gcol) == 1) as.character(.data[[gcol]]) else "All",
-      path,
-      gen = n
+      series = if (length(scol) == 1) as.character(.data[[scol]]) else "All",
+      wave = as.integer(wave),
+      gen = round(value, 2),
+      gen_low = round(value_low, 2)
     )
   want <- expect |>
-    mutate(path = map_chr(str_split(path, ","), function(codes) {
-      paste(match(codes, level_values), collapse = ",")
-    })) |>
-    summarize(pub = sum(n), .by = c(group, path))
+    transmute(series = as.character(series), wave = as.integer(wave),
+              pub = round(value, 2), pub_low = round(low, 2))
 
-  cmp <- full_join(want, got, by = c("group", "path"))
-  off <- is.na(cmp$pub) | is.na(cmp$gen) | cmp$pub != cmp$gen
+  cmp <- full_join(want, got, by = c("series", "wave"))
+  low_off <- !is.na(cmp$pub_low) & !is.na(cmp$gen_low) &
+    abs(cmp$pub_low - cmp$gen_low) > 0.011
+  off <- is.na(cmp$pub) | is.na(cmp$gen) | abs(cmp$pub - cmp$gen) > 0.011 |
+    low_off
 
   if (any(off)) {
     print(cmp[off, ])
     stop("The generated R for ", label, " does not reproduce its chart.")
-  }
-
-  if (is.null(expect_means)) return(invisible())
-
-  # The averages too, group by group and wave by wave.
-  got_means <- get("means", envir = e) |> as_tibble()
-  mcol <- setdiff(names(got_means), c("wave", "mean"))
-  got_means <- got_means |>
-    transmute(
-      group = if (length(mcol) == 1) as.character(.data[[mcol]]) else "All",
-      wave,
-      gen = round(mean, 3)
-    ) |>
-    arrange(group, wave) |>
-    mutate(at = row_number(), .by = group)
-  want_means <- tibble(
-    group = rep(names(expect_means), lengths(expect_means)),
-    pub = unlist(expect_means)
-  ) |>
-    mutate(at = row_number(), .by = group)
-
-  cmp <- full_join(want_means, got_means, by = c("group", "at"))
-  off <- is.na(cmp$pub) | is.na(cmp$gen) | abs(cmp$pub - cmp$gen) > 0.0011
-
-  if (any(off)) {
-    print(cmp[off, ])
-    stop("The generated R for ", label, " does not reproduce its averages.")
   }
 }

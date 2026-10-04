@@ -1555,7 +1555,3 @@ html[data-theme="dark"] .s3-funders {
 .s3-wave-table td.num, .s3-wave-table th.num {
   text-align: right; font-variant-numeric: tabular-nums;
 }
-
-/* ---------- each respondent across waves ---------------------------------
-   Drawn by hand on its own canvas in the chart's frame. */
-.s3-paths-canvas { display: block; }

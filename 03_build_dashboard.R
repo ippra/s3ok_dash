@@ -279,10 +279,10 @@ topic_notes <- compact(setNames(map(topics, function(t) {
 }), map_chr(topics, "id")))
 
 # Region Values ----------------------------------------------------------------
-# Every key-topic item for each of the five survey regions: the Region split
-# 02 computed, turned on its side. Rank and median are presentation, derived
-# here from those values: rank is one more than the number of regions with a
-# strictly greater value.
+# Every key-topic item for each of the five survey regions, for the overview
+# sheet: the Region split 02 computed, turned on its side. Rank is
+# presentation, derived here from those values: one more than the number of
+# regions with a strictly greater value.
 region_levels <- respondents$regions$region
 
 measure_menu <- list(
@@ -310,8 +310,7 @@ region_measure <- function(values, extra = list()) {
     list(
       values = as.list(v),
       rank = as.list(setNames(rank, region_levels)),
-      domain = range(v),
-      median = round(median(v), 2)
+      domain = range(v)
     ),
     extra
   )
@@ -441,50 +440,22 @@ provenance <- paste0(
 min_n <- respondents$min_group_n
 
 # Map Notes --------------------------------------------------------------------
-# The prose under the map: what was asked, how it is scored, how to read the
-# colors, where it came from. Every number is read off the values above.
-note_scoring <- list(
-  mean = function(t, m) paste0(
-    "Answers run from 1 to 5 (", str_to_lower(t$scale), "), and the map ",
-    "shows the average in each region. The colors span the observed range ",
-    "of regional averages, from ", sprintf("%.2f", m$domain[1]), " to ",
-    sprintf("%.2f", m$domain[2]), ", rather than the full 1-to-5 scale, ",
-    "which makes differences between regions easier to see and easier to ",
-    "overread."),
-  share = function(t, m) paste0(
-    "The map shows the percentage of responses in each region answering ",
-    "yes. The colors span the observed range, from ",
-    sprintf("%.1f", m$domain[1]), "% to ", sprintf("%.1f", m$domain[2]),
-    "%, rather than 0 to 100."),
-  top = function(t, m) paste0(
-    "The map shows the percentage of responses in each region that ranked ",
-    "this item first of the seven. The colors span the observed range, from ",
-    sprintf("%.1f", m$domain[1]), "% to ", sprintf("%.1f", m$domain[2]),
-    "%, rather than 0 to 100.")
-)
-
-reading_note <- paste0(
-  "<p><strong>Reading them:</strong> Values are unweighted results for the ",
-  "respondents living in each region, pooled across the waves that asked the ",
-  "question. Regions differ in how many people answered, from ",
-  format(min(respondents$regions$responses), big.mark = ","), " responses ",
-  "in ", respondents$regions$region[which.min(respondents$regions$responses)],
-  " to ", format(max(respondents$regions$responses), big.mark = ","), " in ",
-  respondents$regions$region[which.max(respondents$regions$responses)],
-  ", so each popup gives a 95% confidence interval. Regions whose intervals ",
-  "overlap may not differ in any meaningful way.</p>")
-
+# The prose under the map: what the map shows and what the dots are, and
+# where it all came from. Every number is read off the values above.
 map_notes <- list(
   responses = paste0(
-    "<p class=\"wx-lede\">Survey responses</p>",
-    "<p class=\"wx-note-intro\">The map shows how many survey responses came ",
-    "from each of Oklahoma’s five survey regions across all ",
-    count_word(n_waves), " waves.</p>",
+    "<p class=\"wx-lede\">Reading the map</p>",
+    "<p class=\"wx-note-intro\">Oklahoma\u2019s five survey regions, each ",
+    "a group of counties, with every person on the survey panel placed near ",
+    "where they live.</p>",
     "<div class=\"wx-note-cols\"><div>",
-    "<p><strong>The regions:</strong> Each region is a group of counties: ",
+    "<p><strong>The regions:</strong> ",
     paste(region_levels[-length(region_levels)], collapse = ", "), ", and ",
-    region_levels[length(region_levels)], ". A response is counted in the ",
-    "region where the respondent lived when they answered.</p>",
+    region_levels[length(region_levels)], ", named for their largest city ",
+    "or their part of the state. A response is counted in the region where ",
+    "the respondent lived when they answered, so a panelist who moved ",
+    "between waves is counted in each. Hovering a region shows how many ",
+    "responses it gave across all ", count_word(n_waves), " waves.</p>",
     "</div><div>",
     "<p><strong>The dots:</strong> Each dot is one of ",
     format(locations$n, big.mark = ","), " panelists, placed near where they ",
@@ -496,45 +467,26 @@ map_notes <- list(
     "</div></div>")
 )
 
-for (t in topics) {
-  for (item in t$items) {
-    m <- measure_values[[item$variable]]
-    map_notes[[item$variable]] <- paste0(
-      "<p class=\"wx-lede\">", esc_html(paste0(measure_menu[[t$id]]$prefix,
-                                               item$label)), "</p>",
-      "<p class=\"wx-note-intro\">Values for each of Oklahoma’s five ",
-      "survey regions, from responses in ", item$asked, ".</p>",
-      "<div class=\"wx-note-cols\"><div>",
-      "<p><strong>Respondents were asked:</strong> &ldquo;",
-      esc_html(t$prompt), "&rdquo;</p>",
-      "<ul><li>", esc_html(item$label), "</li></ul>",
-      "</div><div>",
-      "<p>", note_scoring[[t$kind]](t, m), "</p>",
-      reading_note,
-      "<p>", provenance, "</p>",
-      "<p>Survey data: ", dataverse_link, "</p>",
-      "</div></div>")
-  }
-}
-
-unnoted <- setdiff(map_chr(catalog, "code"), names(map_notes))
-
-if (length(unnoted) > 0) {
-  print(unnoted)
-  stop("Measures above are mapped with nothing said underneath them.")
+if (is.null(map_notes$responses)) {
+  stop("The measure the map draws has nothing said underneath it.")
 }
 
 scan_lede <- paste0(
-  "<p>Each row shows where this region falls relative to the other ",
-  count_word(length(region_levels) - 1), ". Because measures use different ",
-  "scales and ranges, compare the region&rsquo;s relative position within ",
-  "each row, not the position of dots across rows.</p>")
+  "<p>Each row is one measure, with the chosen region as a dot and the ",
+  "other ", count_word(length(region_levels) - 1), " as diamonds on a line ",
+  "that runs from the lowest region to the highest. Priorities and ",
+  "experiences are percentages of responses; risk, expected change, and ",
+  "trust are average ratings on a 1-to-5 scale. Rank orders the ",
+  count_word(length(region_levels)), " regions from the highest value ",
+  "(1st) to the lowest. Because measures use different scales and ranges, ",
+  "compare the region&rsquo;s position within each row, not the position ",
+  "of dots across rows.</p>")
 scan_note <- paste0(
   "<p>", provenance, " Values are for the respondents living in each ",
   "region, pooled across the waves that asked each question. With only ",
   count_word(length(region_levels)), " regions, a rank can turn on a small ",
-  "difference: check the confidence interval in each measure&rsquo;s popup ",
-  "before reading much into one.</p>",
+  "difference; regions differ in how many people answered, and small ",
+  "differences between them may not be meaningful.</p>",
   "<p>Survey data: ", dataverse_link, "</p>")
 
 # Project At A Glance ----------------------------------------------------------
@@ -903,39 +855,15 @@ config <- list(
   map = list(
     notes = map_notes,
     scan = list(lede = scan_lede, note = scan_note),
+    # The one sentence a region's popup carries.
     popup = list(
-      mean = paste0("The average rating in this region is {value} on a 1 to ",
-                    "5 scale (95% confidence interval {low} to {upp}), from ",
-                    "{n} responses. The median across the {areas} regions ",
-                    "is {median}. This region {standing}."),
-      share = paste0("{value} of responses in this region say yes (95% ",
-                     "confidence interval {low} to {upp}), from {n} ",
-                     "responses. The median across the {areas} regions is ",
-                     "{median}. This region {standing}."),
-      top = paste0("{value} of responses in this region rank this first ",
-                   "(95% confidence interval {low} to {upp}), from {n} ",
-                   "responses. The median across the {areas} regions is ",
-                   "{median}. This region {standing}."),
       count = paste0("{value} survey responses came from this region across ",
-                     "all waves, from {people} panelists. The median across ",
-                     "the {areas} regions is {median}. This region ",
-                     "{standing}.")
-    ),
-    legend = list(
-      mean = "Average rating (1–5 scale; colors span the observed range)",
-      share = "Percent answering yes (colors span the observed range)",
-      top = "Percent ranking it first (colors span the observed range)",
-      count = "Responses across all waves"
+                     "all waves, from {people} panelists.")
     ),
     figure = list(
       meta = "{areas} survey regions · Oklahoma",
-      mean = paste0("Colors show each region’s average rating on a 1 to ",
-                    "5 scale, spanning the observed range."),
-      share = paste0("Colors show the percentage of responses in each ",
-                     "region answering yes."),
-      top = paste0("Colors show the percentage of responses in each region ",
-                   "ranking this first."),
-      count = "Colors show the number of survey responses from each region.",
+      regions = paste0("Each color is one survey region, a group of counties ",
+                       "named for its largest city or its part of the state."),
       dots = "Dots show approximately where panelists live."
     )
   ),
@@ -1050,18 +978,25 @@ config <- list(
          label = "Explore Regions",
          title = "Explore Regions",
          default_measure = "responses",
+         # What the map is, named above it the way the survey page names its
+         # question.
+         map_kind = "The survey panel",
+         map_title = "The five survey regions",
          intro = list(
-           paste0("Explore how priorities, hazard perceptions, and trust ",
-                  "differ across Oklahoma’s ",
-                  count_word(length(region_levels)), " survey regions, and ",
-                  "see where the people on the survey panel live."),
-           paste0("Values are unweighted results for the respondents living ",
-                  "in each region, not modeled estimates. Regions with fewer ",
-                  "respondents are less certain, and small differences ",
-                  "between regions may not be meaningful.")),
-         hint = paste0("Hover a region to see its value; click it to see ",
-                       "every measure for that region. Dots show ",
-                       "approximately where panelists live."),
+           paste0("See where the people on the survey panel live, and ",
+                  "how priorities, hazard perceptions, and trust differ ",
+                  "across Oklahoma’s ",
+                  count_word(length(region_levels)), " survey regions."),
+           paste0("The map shows the regions and the panel. Choose a region ",
+                  "there or in the Region overview table further down, and ",
+                  "the table lists every measure for it: what its ",
+                  "respondents rank as the top priority, how they rate and ",
+                  "experience weather and climate hazards, how they expect ",
+                  "those risks to change, and whom they trust, each set ",
+                  "against the other four regions.")),
+         hint = paste0("Hover a region to see how many responses it gave; ",
+                       "click it to fill the Region overview table below. ",
+                       "Dots show approximately where panelists live."),
          blurb = blurbs$regions),
     list(id = "narratives", component = "s3_narratives",
          label = "Policy Narratives",

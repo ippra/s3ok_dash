@@ -2043,20 +2043,6 @@ function infoTip(html, opts = {}) {
   return wrap;
 }
 
-function gradientLegend(title, domain, stops, fmt = (v) => String(Math.round(v))) {
-  const wrap = el("div", { class: "wx-legend" });
-  wrap.append(el("div", { class: "wx-legend-title", html: title }));
-  const bar = el("div", { class: "wx-legend-bar" });
-  const colors = [];
-  for (let i = 0; i <= 10; i++) colors.push(rampColor(stops, i / 10));
-  bar.style.background = `linear-gradient(to right, ${colors.join(",")})`;
-  wrap.append(bar);
-  wrap.append(el("div", { class: "wx-legend-labels" },
-    el("span", {}, fmt(domain[0])),
-    el("span", {}, fmt((domain[0] + domain[1]) / 2)),
-    el("span", {}, fmt(domain[1]))));
-  return wrap;
-}
 
 // Tile-free basemap: no tiles and no background, framed on the bounds given
 // (self-contained bundle, no third-party requests).
@@ -2098,7 +2084,7 @@ function inkOn(fill) {
 
 // One choropleth layer with popups + click selection.
 function choroLayer(geo, { idProp, valueOf, color, popupHTML, onSelect,
-                           tooltipHTML, popupOptions = {} }) {
+                           tooltipHTML, popupOptions = {}, fillOpacity = 0.9 }) {
   let selected = null;
   const outline = (id) => ({ weight: 4, color: inkOn(color(valueOf(id))) });
   // A neutral hairline rather than white: white borders vanish at the pale
@@ -2108,7 +2094,7 @@ function choroLayer(geo, { idProp, valueOf, color, popupHTML, onSelect,
   const layer = L.geoJSON(geo, {
     style: (f) => ({
       fillColor: color(valueOf(f.properties[idProp])),
-      fillOpacity: 0.9, color: hairline, weight: idProp === "FIPS" ? 0.5 : 1,
+      fillOpacity, color: hairline, weight: idProp === "FIPS" ? 0.5 : 1,
       opacity: 1
     }),
     onEachFeature: (f, lyr) => {
@@ -2164,44 +2150,32 @@ function ordinal(n) {
   return n + "th";
 }
 
-// All areas on one axis with this one marked — the popup's context in one
-// glance. Colors ride the theme's CSS variables so dark themes stay legible.
-function stripPlotSVG(values, here, median, fmt) {
-  const width = 280, pad = 10;
-  const lo = Math.min(...values), hi = Math.max(...values);
-  const at = (v) => hi === lo ? width / 2
-    : +(pad + (v - lo) / (hi - lo) * (width - 2 * pad)).toFixed(1);
-  const ticks = values.map(v => `M${at(v)} 12v14`).join("");
-  const mid = at(median);
-  return `<svg width="${width}" height="52" class="wx-strip" ` +
-    `style="display:block;margin:8px 0 2px">` +
-    `<path d="${ticks}" stroke="var(--map-line, #b8bec5)" stroke-width="1"/>` +
-    `<path d="M${mid - 4} 34L${mid} 28L${mid + 4} 34Z" fill="var(--text-muted, #6e737a)"/>` +
-    `<text x="${mid}" y="44" font-size="9" fill="var(--text-muted, #6e737a)" ` +
-    `text-anchor="middle">median</text>` +
-    `<circle cx="${at(here)}" cy="19" r="4.5" fill="var(--text, #111827)"/>` +
-    `<text x="${pad}" y="9" font-size="10" fill="var(--text-muted, #6e737a)">${fmt(lo)}</text>` +
-    `<text x="${width - pad}" y="9" font-size="10" fill="var(--text-muted, #6e737a)" ` +
-    `text-anchor="end">${fmt(hi)}</text></svg>`;
-}
-
-// One row of the scan sheet — the popup strip at a size that repeats down a
-// page: every area a tick, the median a triangle, this area a filled dot. The
-// range ends print in their own columns rather than inside the SVG, so they
-// line up down the sheet instead of drifting with each measure's width.
-function scanStripSVG(values, here, median, lo, hi, W = 210) {
-  const H = 16, pad = 6;
+// One row of the scan sheet: the other regions as small diamonds, this one
+// as a filled dot, on a strip stretched to the measure's range. Each mark
+// carries its region and value for the tip the sheet shows on hover, and a
+// clear disc around it wide enough to hover. The range ends print in their
+// own columns rather than inside the SVG, so they line up down the sheet
+// instead of drifting with each measure's width.
+function scanStripSVG(points, hereId, lo, hi, W = 210) {
+  const H = 16, pad = 7;
   const at = (v) => hi === lo ? W / 2
     : +(pad + (v - lo) / (hi - lo) * (W - 2 * pad)).toFixed(1);
-  const ticks = values.map(v => `M${at(v)} 4v8`).join("");
-  const mid = at(median);
+  const mark = (p, shape) => {
+    const cx = at(p.v);
+    return `<g class="s3-mark" data-tip="${esc(p.id)} \u00b7 ${esc(p.label)}">` +
+      shape(cx) + `<circle cx="${cx}" cy="8" r="8" fill="transparent"/></g>`;
+  };
+  const diamond = (cx) =>
+    `<path d="M${cx} 4.5L${cx + 3.5} 8L${cx} 11.5L${cx - 3.5} 8Z" ` +
+    `fill="var(--text-muted, #6e737a)"/>`;
+  const dot = (cx) =>
+    `<circle cx="${cx}" cy="8" r="5.5" fill="var(--accent, #443a83)" ` +
+    `stroke="var(--panel, #ffffff)" stroke-width="1.2"/>`;
+  const here = points.find(p => p.id === hereId);
   return `<svg class="wx-scan-strip" width="${W}" height="${H}" ` +
     `viewBox="0 0 ${W} ${H}" aria-hidden="true">` +
-    `<path d="${ticks}" stroke="var(--map-line, #b8bec5)" stroke-width="1"/>` +
-    `<path d="M${mid - 3.5} 15.5L${mid} 11L${mid + 3.5} 15.5Z" ` +
-    `fill="var(--text-muted, #6e737a)"/>` +
-    `<circle cx="${at(here)}" cy="8" r="4" fill="var(--accent, #443a83)" ` +
-    `stroke="var(--panel, #ffffff)" stroke-width="1.2"/></svg>`;
+    points.filter(p => p.id !== hereId).map(p => mark(p, diamond)).join("") +
+    (here ? mark(here, dot) : "") + `</svg>`;
 }
 
 // Config prose arrives as HTML; the PDF takes text. Going through a detached
@@ -2424,21 +2398,22 @@ components.s3_topics = async function (page, container) {
   await draw();
 };
 
-/* Explore Regions: every key-topic measure for the five survey regions, with
- * the panel's approximate locations over it. The controls sit on the page,
- * the map is the one card, the notes that explain the measure follow, and the
- * overview sheet for a chosen region comes last: every measure as a row
- * stretched to its own range across the regions.
+/* Explore Regions: where the panel lives, and every key-topic measure for the
+ * region a reader picks. The map draws the five survey regions, each in a
+ * color of its own, with the panel's approximate locations over them;
+ * clicking a region opens a popup with its response count and fills the
+ * overview sheet below the notes: every measure as a row stretched to its
+ * own range across the five regions.
  *
- * Values, intervals, ranks and medians all arrive computed. The map has no
- * tiles and no color of its own: the choropleth sits directly on the card,
- * county lines over it. */
+ * Values and ranks arrive computed. The map has no tiles and no color of its
+ * own: the regions sit directly on the card, county lines over them. */
 components.s3_region_map = async function (page, container) {
   const cats = CONFIG.catalog;
   const byCode = new Map(cats.map(c => [c.code, c]));
-  let measure = getParam("measure") || page.default_measure || cats[0].code;
-  if (!byCode.get(measure)) measure = cats[0].code;
-  let scheme = urlScheme();
+  // The one measure the map draws; the sheet carries the rest.
+  const measure = page.default_measure || cats[0].code;
+  if (!byCode.get(measure)) throw new Error(`No measure ${measure} to map.`);
+  setParams({ measure: null, scheme: null });   // from links to an earlier version
   let showDots = getParam("dots") !== "0";
 
   const values = await fetchJSON("data/map/region_values.json");
@@ -2457,6 +2432,17 @@ components.s3_region_map = async function (page, container) {
     : kindOf(code) === "mean" ? Number(v).toFixed(2)
     : Number(v).toFixed(1);
 
+  // One color per region, from the viridis ramp the masthead's rule is drawn
+  // in, stopping short of its yellow, which a dot vanishes against. The
+  // greyscale theme takes greys instead. Regions are colored in the order
+  // the map file lists them, so a region keeps its color between visits.
+  const regionIds = Object.keys(values.places);
+  const regionColor = (id) => {
+    const i = regionIds.indexOf(id);
+    const stops = dataStops(VIRIDIS_STOPS);
+    return rampColor(stops, 0.08 + 0.72 * i / Math.max(1, regionIds.length - 1));
+  };
+
   const lead = pageHead(page);
   const mapHead = el("div", { class: "wx-result-head" });
   const mapKind = el("p", { class: "wx-result-survey" });
@@ -2464,36 +2450,6 @@ components.s3_region_map = async function (page, container) {
   mapHead.append(mapKind, mapTitle);
 
   const bar = el("div", { class: "wx-result-controls wx-map-toolbar" });
-  const measureSel = el("select", { class: "grouping", id: "measure-sel", onchange: () => {
-    measure = measureSel.value; setParams({ measure }, true);
-    redraw();
-  } });
-  const groupsSeen = [...new Set(cats.map(c => c.group))];
-  for (const g of groupsSeen) {
-    const og = el("optgroup", { label: g });
-    // Under its group's heading an option needs only the item.
-    for (const c of cats.filter(x => x.group === g))
-      og.append(el("option", { value: c.code }, c.short || c.label));
-    measureSel.append(og);
-  }
-  measureSel.value = measure;
-  const measureWrap = el("div");
-  measureWrap.append(el("label", { class: "field-label", for: "measure-sel" },
-    "What do you want to explore?"), measureSel);
-
-  // A region can be chosen from a list as well as from the map, so
-  // everything the map does is reachable from the keyboard.
-  const placeWrap = el("div");
-  const placeSel = el("select", { class: "grouping", id: "place-sel", onchange: () => {
-    if (!placeSel.value) { clearPlace(); return; }
-    if (activeLayer) activeLayer.selectById(placeSel.value, map, false, true);
-  } });
-  placeSel.append(el("option", { value: "" }, "None selected"),
-    ...Object.entries(values.places)
-      .map(([code, p]) => el("option", { value: code }, p.label)));
-  placeWrap.append(el("label", { class: "field-label", for: "place-sel" },
-    "Region"), placeSel);
-  bar.append(measureWrap, placeWrap);
 
   const dotsBox = el("input", { type: "checkbox", id: "dots-toggle" });
   dotsBox.checked = showDots;
@@ -2503,14 +2459,9 @@ components.s3_region_map = async function (page, container) {
     syncDots();
   };
   const colors = el("details", { class: "wx-chart-options wx-map-options" });
-  if (scheme !== DEFAULT_SCHEME || !showDots) colors.open = true;
+  if (!showDots) colors.open = true;
   colors.append(el("summary", {}, "Map options"),
     el("div", { class: "wx-chart-options-body" },
-      schemeSelect(scheme, async (sc) => {
-        scheme = sc;
-        setParams({ scheme: sc === DEFAULT_SCHEME ? null : sc });
-        await redraw();
-      }),
       el("label", { class: "wx-ci-label", for: "dots-toggle" },
         dotsBox, " Show approximate respondent locations")));
   bar.append(el("div", { class: "wx-map-options-wrap" }, colors));
@@ -2528,6 +2479,8 @@ components.s3_region_map = async function (page, container) {
   card.append(clearBtn, pairEl,
     el("p", { class: "wx-field-hint wx-map-hint" }, page.hint || ""));
 
+  // Notes first, then the overview sheet: what the map is showing has to be
+  // read before one region's standing on it means anything.
   const notesCard = el("div", { class: "card wx-map-notes" });
   const scanCard = el("div", { class: "card wx-scan-card" });
 
@@ -2535,40 +2488,36 @@ components.s3_region_map = async function (page, container) {
    * legend under them, over a facts line and what the colors show. */
   function mapImage() {
     const bg = getComputedStyle(document.body).getPropertyValue("--panel").trim() || "#ffffff";
-    const cat = byCode.get(measure);
     const inner = FIGURE.W - FIGURE.pad * 2;
     const img = vectorMap(map, FIGURE.S, bg);
     const mapH = inner * img.height / img.width;
-    const legendH = 56;
+    const keyH = 30;
     return figureImage({
-      label: cat.group, stem: cat.prompt || "", title: cat.label,
+      label: page.map_kind || "", stem: "", title: page.map_title || "",
       body: {
-        height: mapH + 14 + legendH,
+        height: mapH + 14 + keyH,
         draw: (ctx, x, y, w, t) => {
           ctx.drawImage(img, x, y, w, mapH);
-          const leg = lastLegend;
-          if (!leg) return;
-          const ly = y + mapH + 14, lw = Math.min(360, w);
-          ctx.font = `600 12px ${t.family}`; ctx.fillStyle = t.muted;
-          ctx.fillText(leg.title, x, ly + 12);
-          const grad = ctx.createLinearGradient(x, 0, x + lw, 0);
-          for (let i = 0; i <= 10; i++) grad.addColorStop(i / 10, rampColor(leg.stops, i / 10));
-          ctx.fillStyle = grad; ctx.fillRect(x, ly + 20, lw, 10);
-          ctx.font = `400 12px ${t.family}`; ctx.fillStyle = t.muted;
-          const [lo, hi] = leg.domain;
-          ctx.textAlign = "left"; ctx.fillText(leg.fmt(lo), x, ly + 46);
-          ctx.textAlign = "center"; ctx.fillText(leg.fmt((lo + hi) / 2), x + lw / 2, ly + 46);
-          ctx.textAlign = "right"; ctx.fillText(leg.fmt(hi), x + lw, ly + 46);
-          ctx.textAlign = "left";
+          // The key: a swatch and a name per region, with its count.
+          let kx = x; const ky = y + mapH + 24;
+          ctx.font = `400 13px ${t.family}`; ctx.textBaseline = "middle";
+          for (const id of regionIds) {
+            const words = `${values.places[id].label} \u00b7 ` +
+              `${Number(values.places[id].responses).toLocaleString()}`;
+            ctx.fillStyle = regionColor(id); ctx.fillRect(kx, ky - 6, 14, 12);
+            ctx.fillStyle = t.ink; ctx.fillText(words, kx + 20, ky);
+            kx += 20 + ctx.measureText(words).width + 22;
+          }
+          ctx.textBaseline = "alphabetic";
         }
       },
       lines: [{ text: fillTpl(CONFIG.map.figure.meta, { areas: N }), strong: true },
-              { text: fillTpl(CONFIG.map.figure[cat.kind], { label: cat.label }) +
+              { text: CONFIG.map.figure.regions +
                       (showDots ? " " + CONFIG.map.figure.dots : "") }],
       source: FIGURE_SOURCE + " Results are unweighted."
     });
   }
-  const mapName = (ext) => `s3ok-map-${measure}.${ext}`;
+  const mapName = (ext) => `s3ok-map-regions.${ext}`;
   card.append(el("div", { class: "wx-toolbar-actions wx-result-downloads" },
     pdfButton("Download map (PNG)", () => saveFigure(mapImage(), mapName("png"), "png")),
     pdfButton("Download map (PDF)", () => saveFigure(mapImage(), mapName("pdf"), "pdf"))));
@@ -2620,7 +2569,6 @@ components.s3_region_map = async function (page, container) {
   }).observe(pairEl);
 
   let activeLayer = null;
-  let lastLegend = null;
 
   const scanCfg = (CONFIG.map && CONFIG.map.scan) || {};
   let place = getParam("place") || "";
@@ -2628,7 +2576,6 @@ components.s3_region_map = async function (page, container) {
 
   function clearPlace() {
     place = "";
-    placeSel.value = "";
     setParams({ place: null }, true);
     if (activeLayer) activeLayer.clearSelection();
     map.closePopup();
@@ -2640,12 +2587,16 @@ components.s3_region_map = async function (page, container) {
     return {
       cat,
       values: Object.values(m.values).filter(v => v != null).map(Number),
+      // Every region's value with its name, for the marks and their tips.
+      points: Object.entries(m.values).filter(([, v]) => v != null)
+        .map(([id, v]) => ({ id, v: Number(v), label: fmtVal(cat.code)(v) })),
       here: Number(m.values[place]),
-      median: Number(m.median),
       lo: Number(m.domain[0]), hi: Number(m.domain[1]),
       rank: m.rank[place]
     };
   }
+  // The sheet in the order the catalog groups its measures.
+  const groupsSeen = [...new Set(cats.map(c => c.group))];
   const scanSections = () => groupsSeen.map(g =>
     ({ group: g, rows: cats.filter(c => c.group === g) }));
   const rankText = (r) => ordinal(r);
@@ -2658,7 +2609,6 @@ components.s3_region_map = async function (page, container) {
     const rowH = 26, groupH = 30, keyH = 30, headH = 22;
     const nRows = sections.reduce((t, s) => t + s.rows.length, 0);
     const css = getComputedStyle(document.body);
-    const tickColor = css.getPropertyValue("--map-line").trim() || "#b8bec5";
     const bg = css.getPropertyValue("--panel").trim() || "#ffffff";
     const draw = (ctx, x, y, w, t) => {
       const SW = 380;
@@ -2668,27 +2618,22 @@ components.s3_region_map = async function (page, container) {
         ctx.font = font; ctx.fillStyle = color; ctx.textAlign = align;
         ctx.fillText(str, px, py); ctx.textAlign = "left";
       };
-      const tick = (px, cy, h) => {
-        ctx.strokeStyle = tickColor; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(px, cy - h); ctx.lineTo(px, cy + h); ctx.stroke();
-      };
-      const tri = (px, top) => {
+      const diamond = (px, cy) => {
         ctx.fillStyle = t.muted; ctx.beginPath();
-        ctx.moveTo(px - 4, top + 6); ctx.lineTo(px + 4, top + 6); ctx.lineTo(px, top);
-        ctx.closePath(); ctx.fill();
+        ctx.moveTo(px, cy - 4); ctx.lineTo(px + 4, cy); ctx.lineTo(px, cy + 4);
+        ctx.lineTo(px - 4, cy); ctx.closePath(); ctx.fill();
       };
       const dot = (px, cy) => {
         ctx.fillStyle = t.accent; ctx.strokeStyle = bg; ctx.lineWidth = 1.4;
-        ctx.beginPath(); ctx.arc(px, cy, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, cy, 6.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       };
       let kx = x; const ky = y + 14;
       const keyItem = (mark, words) => {
         mark(kx + 5); text(words, kx + 16, ky + 4, `400 13px ${t.family}`, t.muted);
         ctx.font = `400 13px ${t.family}`; kx += 16 + ctx.measureText(words).width + 26;
       };
-      keyItem(px => tick(px, ky, 6), `each of the ${N} regions`);
-      keyItem(px => tri(px, ky - 3), "median");
-      keyItem(px => dot(px, ky), "this region");
+      keyItem(px => diamond(px, ky), "the other regions");
+      keyItem(px => dot(px, ky), label);
       let cy = y + keyH;
       const headFont = `600 11px ${t.mono}`;
       text("LOWEST REGION TO HIGHEST REGION", X.strip + SW / 2, cy + 12, headFont, t.muted, "center");
@@ -2715,8 +2660,7 @@ components.s3_region_map = async function (page, container) {
           const span = r.hi - r.lo;
           const at = (v) => span === 0 ? X.strip + SW / 2
             : X.strip + 6 + (v - r.lo) / span * (SW - 12);
-          for (const v of r.values) tick(at(v), mid, 6);
-          tri(at(r.median), mid + 4);
+          for (const v of r.values) if (v !== r.here) diamond(at(v), mid);
           dot(at(r.here), mid);
           text(fmtVal(cat.code)(r.here), X.value, mid + 5, `700 14px ${t.family}`, t.ink, "right");
           text(rankText(r.rank), X.rank, mid + 5, `400 13px ${t.family}`, t.muted, "right");
@@ -2738,33 +2682,51 @@ components.s3_region_map = async function (page, container) {
   const scanName = (ext) =>
     `s3ok-overview-${place.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.${ext}`;
 
-  const KEY_MARKS = [
-    ['<svg width="9" height="12"><path d="M4.5 1v10" stroke="var(--map-line,#b8bec5)"/></svg>',
-     `each of the ${N} regions`],
-    ['<svg width="9" height="12"><path d="M1 9L4.5 4L8 9Z" fill="var(--text-muted,#6e737a)"/></svg>',
-     "median"],
-    ['<svg width="9" height="12"><circle cx="4.5" cy="6" r="4" fill="var(--accent,#443a83)"/></svg>',
-     "this region"]
+  // The key's marks, drawn as the rows draw them; the dot is named for the
+  // region on the sheet.
+  const keyMarks = (label) => [
+    ['<svg width="12" height="12"><path d="M6 2L10 6L6 10L2 6Z" fill="var(--text-muted,#6e737a)"/></svg>',
+     "the other regions"],
+    ['<svg width="12" height="12"><circle cx="6" cy="6" r="5.5" fill="var(--accent,#443a83)"/></svg>',
+     label]
   ];
+
+  // The sheet's own way of choosing a region, at its head, so everything a
+  // click on the map does is reachable from the keyboard and from the table
+  // itself. It follows the map: a click there shows here.
+  const placeSel = el("select", { class: "grouping", id: "place-sel", onchange: () => {
+    if (!placeSel.value) { clearPlace(); return; }
+    if (activeLayer) activeLayer.selectById(placeSel.value, map, false, true);
+  } });
+  placeSel.append(el("option", { value: "" }, "Choose a region"),
+    ...regionIds.map(id => el("option", { value: id }, values.places[id].label)));
 
   function renderScan() {
     scanCard.textContent = "";
     clearBtn.style.display = place ? "" : "none";
-    if (!place) { scanCard.style.display = "none"; return; }
-    scanCard.style.display = "";
-    const label = (values.places[place] || {}).label || place;
+    placeSel.value = place;
+    const label = (values.places[place] || {}).label || "";
 
     scanCard.append(el("div", { class: "wx-scan-head" },
       el("h3", { class: "wx-scan-sub wx-scan-heading" },
-        `Region overview · ${label} · ${cats.length} measures`),
+        place ? `Region overview · ${label} · ${cats.length} measures`
+              : `Region overview · ${cats.length} measures`),
       el("div", { class: "wx-scan-actions" },
-        el("button", { class: "wx-clear-btn", type: "button",
-          onclick: () => clearPlace() }, "Clear"))));
+        el("label", { class: "field-label s3-scan-pick-label", for: "place-sel" },
+          "Region"),
+        placeSel)));
+
+    // Until a region is chosen the sheet says how to choose one and stops.
+    if (!place) {
+      scanCard.append(el("p", { class: "wx-scan-lede" },
+        "Choose a region above, or click one on the map, to see every " +
+        "measure for it set against the other four regions."));
+      return;
+    }
 
     if (scanCfg.lede) scanCard.append(el("div", { class: "wx-scan-lede", html: scanCfg.lede }));
-    scanCard.append(el("p", { class: "wx-scan-key", html: KEY_MARKS
-      .map(([mark, text]) => `<span>${mark} ${esc(text)}</span>`).join("") +
-      `<span class="wx-scan-hint">Select a row to map it.</span>` }));
+    scanCard.append(el("p", { class: "wx-scan-key", html: keyMarks(label)
+      .map(([mark, text]) => `<span>${mark} ${esc(text)}</span>`).join("") }));
 
     const table = el("div", { class: "wx-scan-table" });
     table.append(el("div", { class: "wx-scan-cols" },
@@ -2779,22 +2741,13 @@ components.s3_region_map = async function (page, container) {
       table.append(el("div", { class: "wx-scan-group" }, el("span", {}, s.group)));
       s.rows.forEach((cat, i) => {
         const r = scanRow(cat);
-        table.append(el("button", {
-          type: "button",
-          class: "wx-scan-row" + (i % 2 ? " is-band" : "") +
-            (cat.code === measure ? " is-current" : ""),
-          title: `Map ${cat.label}`,
-          onclick: () => {
-            measure = cat.code;
-            measureSel.value = cat.code;
-            setParams({ measure }, true);
-            redraw();
-          }
+        table.append(el("div", {
+          class: "wx-scan-row is-static" + (i % 2 ? " is-band" : "")
         },
           el("span", { class: "wx-scan-label" }, cat.short || cat.label),
           el("span", { class: "wx-scan-lo" }, fmtRange(cat.code)(r.lo)),
           el("span", { class: "wx-scan-plot",
-            html: scanStripSVG(r.values, r.here, r.median, r.lo, r.hi, stripWidth) }),
+            html: scanStripSVG(r.points, place, r.lo, r.hi, stripWidth) }),
           el("span", { class: "wx-scan-hi" }, fmtRange(cat.code)(r.hi)),
           el("span", { class: "wx-scan-value" }, fmtVal(cat.code)(r.here)),
           el("span", { class: "wx-scan-pct" }, rankText(r.rank))));
@@ -2805,6 +2758,8 @@ components.s3_region_map = async function (page, container) {
     scanCard.append(el("div", { class: "wx-toolbar-actions wx-result-downloads" },
       pdfButton("Download overview (PNG)", () => saveFigure(scanImage(), scanName("png"), "png")),
       pdfButton("Download overview (PDF)", () => saveFigure(scanImage(), scanName("pdf"), "pdf"))));
+    // The sheet is rebuilt from nothing each time, so its tip rejoins it.
+    scanCard.append(markTip);
     fitStrips();
   }
 
@@ -2823,7 +2778,7 @@ components.s3_region_map = async function (page, container) {
       for (const cat of s.rows) {
         const r = scanRow(cat);
         cells[i++].innerHTML =
-          scanStripSVG(r.values, r.here, r.median, r.lo, r.hi, stripWidth);
+          scanStripSVG(r.points, place, r.lo, r.hi, stripWidth);
       }
     }
   }
@@ -2833,43 +2788,47 @@ components.s3_region_map = async function (page, container) {
     stripTimer = setTimeout(fitStrips, 120);
   }).observe(scanCard);
 
-  // The popup's link into the sheet. Delegated on the container because
-  // Leaflet rebuilds the popup element on every open.
-  container.addEventListener("click", (e) => {
-    const link = e.target.closest(".wx-scan-link");
-    if (!link) return;
-    e.preventDefault();
-    selectPlace(String(link.dataset.place || ""));
-    scanCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  // The tip over a mark in the sheet: one element, moved to whichever mark
+  // the pointer is on, in the map tooltip's own style. Delegated on the
+  // card, because the marks are redrawn whenever the strips are refitted.
+  const markTip = el("div", { class: "s3-mark-tip", role: "tooltip" });
+  markTip.hidden = true;
+  const moveTip = (e) => {
+    const box = scanCard.getBoundingClientRect();
+    markTip.style.left = (e.clientX - box.left) + "px";
+    markTip.style.top = (e.clientY - box.top - 14) + "px";
+  };
+  scanCard.addEventListener("mouseover", (e) => {
+    const g = e.target.closest(".s3-mark");
+    if (!g || !scanCard.contains(g)) return;
+    markTip.textContent = g.dataset.tip;
+    markTip.hidden = false;
+    moveTip(e);
+  });
+  scanCard.addEventListener("mousemove", (e) => {
+    if (!markTip.hidden) moveTip(e);
+  });
+  scanCard.addEventListener("mouseout", (e) => {
+    const g = e.target.closest(".s3-mark");
+    if (g && !g.contains(e.relatedTarget)) markTip.hidden = true;
   });
 
-  // The popup's paragraph, from the templates in config.map.popup. Rank,
-  // median and the interval are the shipped ones; this only assembles the
-  // sentence.
-  function popupStory(id, code) {
-    const cat = byCode.get(code);
-    const m = M(code);
+  // The popup's one sentence: how many responses the region gave, from how
+  // many panelists, both shipped in the map file.
+  function popupStory(id) {
+    const m = M(measure);
     const here = m.values[id];
     if (here == null) return "No data for this region.";
-    const rank = m.rank[id];
-    const standing = rank === 1 ? `has the highest value of the ${N} regions`
-      : rank === N ? `has the lowest value of the ${N} regions`
-      : `ranks ${ordinal(rank)} highest of the ${N} regions`;
     const p = values.places[id] || {};
-    return fillTpl(CONFIG.map.popup[cat.kind], {
-      value: fmtVal(code)(here),
-      low: m.low ? fmtRange(code)(m.low[id]) : "",
-      upp: m.upp ? fmtRange(code)(m.upp[id]) : "",
-      n: m.n ? Number(m.n[id]).toLocaleString() : "",
-      people: Number(p.people || 0).toLocaleString(),
-      median: fmtVal(code)(m.median), standing, areas: N
+    return fillTpl(CONFIG.map.popup.count, {
+      value: fmtVal(measure)(here),
+      people: Number(p.people || 0).toLocaleString()
     });
   }
 
   let syncing = false;
   function selectPlace(id) {
     place = String(id);
-    placeSel.value = place;
     setParams({ place }, true);
     renderScan();
     if (syncing) return;
@@ -2880,16 +2839,16 @@ components.s3_region_map = async function (page, container) {
 
   // Colors stretch over the measure's own observed range: on a shared 1-5
   // scale five regions a tenth apart would all come out one tone.
-  function buildChoro(code, stops) {
-    const m = M(code);
-    const d = m.domain;
-    const color = (v) => v == null ? "#d0d0d0"
-      : rampColor(stops, d[1] === d[0] ? 0.5 : (v - d[0]) / (d[1] - d[0]));
-    const all = Object.values(m.values).filter(v => v != null).map(Number);
+  function buildRegions() {
+    const m = M(measure);
     return choroLayer(geo, {
       idProp: "REGION",
-      valueOf: (id) => m.values[id],
-      color,
+      // The color is the region's own, so the layer colors by id.
+      valueOf: (id) => id,
+      color: regionColor,
+      // Lighter than a value map, so the county lines and the dots read
+      // through the fills.
+      fillOpacity: 0.62,
       onSelect: (id) => selectPlace(id),
       // The frame is fixed and the state fills it, so a popup over a northern
       // region has nowhere to pan to; it is let out over the top of the card
@@ -2898,39 +2857,37 @@ components.s3_region_map = async function (page, container) {
       tooltipHTML: (id) => {
         const v = m.values[id];
         return `<strong>${esc(id)}</strong><br>` +
-          `<span class="wx-tt-val">${esc(byCode.get(code).label)} ` +
-          `${v == null ? "no data" : fmtVal(code)(v)}</span>` +
-          `<br><span class="wx-tip-hint">Click for the full story</span>`;
+          `<span class="wx-tt-val">${v == null ? "no data" : fmtVal(measure)(v)} ` +
+          `responses</span>` +
+          `<br><span class="wx-tip-hint">Click to see every measure</span>`;
       },
       popupHTML: (id) =>
-        `<strong>${esc(id)}</strong><br><span class="wx-popup-measure">` +
-        `${esc(byCode.get(code).label)}</span><br><br>` +
-        esc(popupStory(id, code)) +
-        stripPlotSVG(all, Number(m.values[id]), Number(m.median), fmtRange(code)) +
-        `<a class="wx-scan-link" href="#" data-place="${esc(String(id))}">` +
-        `See every measure for this region &darr;</a>`
+        `<strong>${esc(id)}</strong><br>` + esc(popupStory(id))
     }).addTo(map);
   }
 
-  function drawLegend(code, stops) {
+  // The key under the map: each region's swatch, name and response count.
+  function drawKey() {
     legendHolder.textContent = "";
-    const m = M(code);
-    const title = CONFIG.map.legend[kindOf(code)] || "";
-    legendHolder.append(gradientLegend(esc(title) + " — " +
-      esc(byCode.get(code).label), m.domain, stops, fmtRange(code)));
-    return { title: title + " · " + byCode.get(code).label,
-             domain: m.domain, stops, fmt: fmtRange(code) };
+    const key = el("p", { class: "wx-scan-key s3-region-key" });
+    for (const id of regionIds) {
+      key.append(el("span", {},
+        el("span", { class: "s3-region-swatch", "aria-hidden": "true",
+          style: `background:${regionColor(id)}` }),
+        `${values.places[id].label} \u00b7 ` +
+        `${Number(values.places[id].responses).toLocaleString()} responses`));
+    }
+    legendHolder.append(key);
   }
 
   async function redraw() {
     const cat = byCode.get(measure);
-    const stops = dataStops(schemeStops(scheme));
     refit();
-    mapKind.textContent = cat.group;
-    mapTitle.textContent = cat.label;
+    mapKind.textContent = page.map_kind || cat.group;
+    mapTitle.textContent = page.map_title || cat.label;
 
     if (activeLayer) map.removeLayer(activeLayer);
-    activeLayer = buildChoro(measure, stops);
+    activeLayer = buildRegions();
     syncDots();
 
     // The map's text alternative: a spoken label, and every region's value
@@ -2951,15 +2908,14 @@ components.s3_region_map = async function (page, container) {
         }))));
     if (!mapAlt.isConnected) pairEl.after(mapAlt);
 
-    lastLegend = drawLegend(measure, stops);
+    drawKey();
 
     const notes = CONFIG.map.notes || {};
     notesCard.innerHTML = notes[measure] || "";
     notesCard.style.display = notesCard.innerHTML ? "" : "none";
 
-    // ?place= deep-links a region, and a click keeps it selected across
-    // measure changes. The popup opens on the first draw only: reopening it
-    // on every measure change would fight the reader who just closed it.
+    // ?place= deep-links a region. The popup opens on the first draw only:
+    // reopening it on a repaint would fight the reader who just closed it.
     if (place) {
       activeLayer.selectById(place, map, false, firstDraw);
       firstDraw = false;

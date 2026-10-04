@@ -4,6 +4,9 @@ The S³OK Public Survey dashboard: a static site built from the public wave
 files, in the look and structure of WxDash (`ippra/wxdash`), whose front end
 it shares.
 
+- **Beta:** https://ippra.github.io/s3ok_dash/
+- **Release:** https://ippra.net/s3ok_dash
+
 ## Workflow
 
 | step | what it is | output |
@@ -49,9 +52,10 @@ exactly this: step 02 takes twenty-five minutes and needs the location file
 the repository does not carry, so it is run locally and reaches the beta when
 its output is committed and pushed.
 
-**Production: ippra.net, by hand.** Everything the build needs is in the
-repository, so this works from a fresh clone on any machine with R; no
-survey files, no `~/.Renviron`, and no step 02. From the repository root:
+**Production: ippra.net, by hand. Matt deploys it.** Everything the build
+needs is in the repository, so this works from a fresh clone on any machine
+with R; no survey files, no `~/.Renviron`, and no step 02. From the
+repository root:
 
 ```
 Rscript -e 'install.packages(c("tidyverse", "jsonlite", "here"))'  # once
@@ -67,6 +71,14 @@ nginx sets it on the three entry URLs `/s3ok_dash`, `/s3ok_dash/` and
 `/s3ok_dash/index.html`), so a new deploy is seen without a hard refresh;
 everything else carries a `?v=<build>` stamp and can be cached as long as the
 server likes.
+
+After deploying, open https://ippra.net/s3ok_dash and check two things: the
+dashboard loads, and there is no Beta label beside "S³OK" in the masthead.
+
+Link to it from ippra.net as `/s3ok_dash/?from=<path of the linking page>`,
+for example `/s3ok_dash/?from=/tools`. A visitor who arrives that way gets a
+"Back to IPPRA" link in the black bar that returns them to that page; anyone
+else sees the institute's name there.
 
 To publish a newer version, pull `main`, run step 03 again and rsync again.
 Only the dashboard's maintainer runs step 02; its output arrives in the

@@ -4,7 +4,7 @@
 # no survey files. The statistics (step 02) are run locally and their output
 # committed; this never recomputes them.
 #
-# The production site at ippra.net/s3ok_dash is not deployed from here. It is
+# The production site at ippra.net/s3okdash is not deployed from here. It is
 # built without the channel variable and copied to our own server; see
 # README.md, "Deploying".
 name: Deploy beta

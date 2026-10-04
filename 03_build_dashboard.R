@@ -24,7 +24,7 @@ source(here::here("helpers", "wording.R"))
 # no third-party requests. Upload the directory to any web host.
 
 # Where the site is published, for the citation on the About page.
-site_url <- "https://ippra.net/s3ok_dash"
+site_url <- "https://ippra.net/s3okdash"
 
 # Which deployment this build is for. The beta on GitHub Pages is built with
 # S3OK_CHANNEL=beta, which labels the masthead and asks search engines not to

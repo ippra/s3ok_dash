@@ -14,12 +14,15 @@ it shares.
 | `03_build_dashboard.R` | writes the page prose and assembles the site; computes no statistics | `outputs/03_site/` |
 
 ```
-Rscript 00_run_pipeline.R      # steps 02 and 03, in order
+Rscript 00_run_pipeline.R      # steps 02 and 03, in order (maintainer only)
+Rscript 03_build_dashboard.R   # step 03 alone: what a deploy needs
 python3 preview.py             # then open http://127.0.0.1:8902/
 ```
 
-Step 02 takes ten to twenty-five minutes; step 03 takes seconds. After a
-change to wording or to the front end, run step 03 alone.
+Step 02 takes ten to twenty-five minutes and needs the location file that is
+kept out of the repository (see Sources); step 03 takes seconds and needs
+nothing beyond a clone. After a change to wording or to the front end, run
+step 03 alone.
 
 Serve over HTTP to preview: the site fetches its data, which `file://` blocks.
 `outputs/03_site/` is the deployable site: plain files, every library
@@ -46,16 +49,28 @@ exactly this: step 02 takes twenty-five minutes and needs the location file
 the repository does not carry, so it is run locally and reaches the beta when
 its output is committed and pushed.
 
-**Production: ippra.net, by hand.** Build without the channel variable and
-copy the site to the server:
+**Production: ippra.net, by hand.** Everything the build needs is in the
+repository, so this works from a fresh clone on any machine with R; no
+survey files, no `~/.Renviron`, and no step 02. From the repository root:
 
 ```
-Rscript 03_build_dashboard.R
+Rscript -e 'install.packages(c("tidyverse", "jsonlite", "here"))'  # once
+Rscript 03_build_dashboard.R                                        # seconds
 rsync -av --delete outputs/03_site/ <ippra.net host>:<docroot>/s3ok_dash/
 ```
 
-Its URLs are relative, so it runs under any path. Serve `index.html` with
-`Cache-Control: no-cache`; everything else carries a `?v=<build>` stamp.
+Leave `S3OK_CHANNEL` unset: that is what makes it the production build, with
+no Beta label and no `noindex`. The site is plain static files with relative
+URLs, so it runs under any path and needs no server-side code. One server
+setting: serve `index.html` with `Cache-Control: no-cache` (as for WxDash,
+nginx sets it on the three entry URLs `/s3ok_dash`, `/s3ok_dash/` and
+`/s3ok_dash/index.html`), so a new deploy is seen without a hard refresh;
+everything else carries a `?v=<build>` stamp and can be cached as long as the
+server likes.
+
+To publish a newer version, pull `main`, run step 03 again and rsync again.
+Only the dashboard's maintainer runs step 02; its output arrives in the
+repository already computed.
 
 ## Layout
 
